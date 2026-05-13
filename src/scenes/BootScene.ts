@@ -1,6 +1,14 @@
 import Phaser from 'phaser';
 
 export class BootScene extends Phaser.Scene {
+  private dots: Phaser.GameObjects.Graphics[] = [];
+  private titleText!: Phaser.GameObjects.Text;
+  private walker!: Phaser.GameObjects.Graphics;
+  private progressBarBg!: Phaser.GameObjects.Graphics;
+  private progressFill!: Phaser.GameObjects.Graphics;
+  private percentText!: Phaser.GameObjects.Text;
+  private currentProgress = 0;
+
   constructor() {
     super({ key: 'BootScene' });
   }
@@ -8,26 +16,60 @@ export class BootScene extends Phaser.Scene {
   preload() {
     const { width, height } = this.scale;
 
-    this.add.rectangle(width / 2, height / 2, width, height, 0x87ceeb);
-    const progressBox = this.add.rectangle(width / 2, height / 2 + 50, 400, 40, 0x222222);
-    const progressBar = this.add.rectangle(width / 2 - 190, height / 2 + 50, 0, 30, 0x44dd44);
-    progressBar.setOrigin(0, 0.5);
+    // Soft gradient background
+    const bg = this.add.graphics();
+    bg.fillGradientStyle(0x87CEEB, 0xB3E5FC, 0xE1F5FE, 0xE0F7FA);
+    bg.fillRect(0, 0, width, height);
 
-    this.add.text(width / 2, height / 2 - 30, '宝宝乐园', {
-      fontSize: '48px',
+    // Title with rainbow color cycling
+    this.titleText = this.add.text(width / 2, height / 2 - 80, '宝宝乐园', {
+      fontSize: '52px',
+      color: '#FF6B35',
+      fontFamily: 'sans-serif',
+      fontStyle: 'bold',
+      stroke: '#ffffff',
+      strokeThickness: 6,
+    }).setOrigin(0.5);
+
+    this.createRainbowCycle();
+
+    // Progress bar background
+    this.progressBarBg = this.add.graphics();
+    this.progressBarBg.fillStyle(0xffffff, 0.5);
+    this.progressBarBg.fillRoundedRect(width / 2 - 200, height / 2 + 20, 400, 24, 12);
+    this.progressBarBg.lineStyle(2, 0xFFB74D);
+    this.progressBarBg.strokeRoundedRect(width / 2 - 200, height / 2 + 20, 400, 24, 12);
+
+    // Progress fill
+    this.progressFill = this.add.graphics();
+
+    // Percent text
+    this.percentText = this.add.text(width / 2, height / 2 + 32, '0%', {
+      fontSize: '14px',
       color: '#ffffff',
+      fontFamily: 'sans-serif',
+      fontStyle: 'bold',
+    }).setOrigin(0.5);
+
+    // Bouncing dots
+    this.createBouncingDots(width / 2, height / 2 + 75);
+
+    // Walking character (a small bunny)
+    this.walker = this.add.graphics();
+    this.drawBunny(this.walker);
+    this.walker.setPosition(width / 2 - 210, height / 2 + 32);
+
+    // Subtitle
+    this.add.text(width / 2, height / 2 + 110, '正在准备游戏...', {
+      fontSize: '16px',
+      color: '#78909C',
       fontFamily: 'sans-serif',
     }).setOrigin(0.5);
 
-    const percentText = this.add.text(width / 2, height / 2 + 50, '0%', {
-      fontSize: '20px',
-      color: '#ffffff',
-      fontFamily: 'sans-serif',
-    }).setOrigin(0.5);
-
+    // Progress listener
     this.load.on('progress', (value: number) => {
-      progressBar.width = 380 * value;
-      percentText.setText(`${Math.round(value * 100)}%`);
+      this.currentProgress = value;
+      this.updateProgress(value);
     });
 
     // Animals
@@ -49,6 +91,98 @@ export class BootScene extends Phaser.Scene {
     }
 
     this.generateUITextures();
+  }
+
+  private updateProgress(value: number) {
+    const { width, height } = this.scale;
+    const barWidth = 396 * value;
+
+    this.progressFill.clear();
+    this.progressFill.fillStyle(0xFFB74D, 1);
+    this.progressFill.fillRoundedRect(width / 2 - 198, height / 2 + 22, barWidth, 20, 10);
+
+    this.percentText.setText(`${Math.round(value * 100)}%`);
+
+    // Move the walking character along the progress bar
+    const startX = width / 2 - 210;
+    const endX = width / 2 + 190;
+    this.walker.x = startX + (endX - startX) * value;
+  }
+
+  private createRainbowCycle() {
+    const colors = ['#FF6B35', '#FF4081', '#9C27B0', '#2196F3', '#4CAF50', '#FFEB3B', '#FF6B35'];
+    let colorIndex = 0;
+
+    this.time.addEvent({
+      delay: 800,
+      callback: () => {
+        colorIndex = (colorIndex + 1) % colors.length;
+        this.titleText.setColor(colors[colorIndex]);
+      },
+      loop: true,
+    });
+  }
+
+  private createBouncingDots(cx: number, cy: number) {
+    const dotColors = [0xFF7043, 0xFFCA28, 0x66BB6A];
+
+    for (let i = 0; i < 3; i++) {
+      const dot = this.add.graphics();
+      dot.fillStyle(dotColors[i], 1);
+      dot.fillCircle(0, 0, 8);
+      dot.setPosition(cx - 30 + i * 30, cy);
+
+      this.tweens.add({
+        targets: dot,
+        y: cy - 18,
+        duration: 400,
+        delay: i * 150,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut',
+      });
+
+      this.dots.push(dot);
+    }
+  }
+
+  private drawBunny(g: Phaser.GameObjects.Graphics) {
+    // Body
+    g.fillStyle(0xFFFFFF);
+    g.fillCircle(0, 4, 10);
+
+    // Head
+    g.fillStyle(0xFFFFFF);
+    g.fillCircle(0, -8, 8);
+
+    // Ears
+    g.fillStyle(0xFFFFFF);
+    g.fillEllipse(-4, -22, 5, 12);
+    g.fillEllipse(4, -22, 5, 12);
+
+    // Inner ears
+    g.fillStyle(0xFFCDD2);
+    g.fillEllipse(-4, -22, 3, 8);
+    g.fillEllipse(4, -22, 3, 8);
+
+    // Eyes
+    g.fillStyle(0x333333);
+    g.fillCircle(-3, -9, 2);
+    g.fillCircle(3, -9, 2);
+
+    // Nose
+    g.fillStyle(0xFF8A80);
+    g.fillCircle(0, -6, 1.5);
+
+    // Bounce the bunny
+    this.tweens.add({
+      targets: g,
+      y: g.y - 6,
+      duration: 300,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeOut',
+    });
   }
 
   private generateUITextures() {

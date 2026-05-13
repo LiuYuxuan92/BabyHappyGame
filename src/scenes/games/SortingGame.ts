@@ -1,4 +1,8 @@
 import Phaser from 'phaser';
+import { AudioManager } from '../../components/AudioManager';
+import { SceneTransition } from '../../components/SceneTransition';
+import { saveStars } from '../../utils/storage';
+import { VoiceFeedback } from '../../components/VoiceFeedback';
 
 interface SortItem {
   imageKey: string;
@@ -12,12 +16,18 @@ export class SortingGame extends Phaser.Scene {
   private totalItems = 0;
   private level = 1;
   private scoreText!: Phaser.GameObjects.Text;
+  private audio!: AudioManager;
 
   constructor() {
     super({ key: 'SortingGame' });
   }
 
   create() {
+    this.audio = AudioManager.getInstance();
+    this.audio.init(this);
+
+    // Fade in transition
+    SceneTransition.fadeIn(this);
     const { width, height } = this.scale;
     this.score = 0;
     this.items = [];
@@ -29,7 +39,10 @@ export class SortingGame extends Phaser.Scene {
 
     // Back button
     const backBtn = this.add.image(40, 40, 'btn_back').setInteractive({ useHandCursor: true });
-    backBtn.on('pointerdown', () => this.scene.start('MenuScene'));
+    backBtn.on('pointerdown', () => {
+      this.audio.playTap();
+      this.scene.start('MenuScene');
+    });
 
     // Title
     this.add.text(width / 2, 35, '🐾 动物分类', {
@@ -103,6 +116,10 @@ export class SortingGame extends Phaser.Scene {
     });
 
     // Drag events
+    this.input.on('dragstart', () => {
+      this.audio.playDrag();
+    });
+
     this.input.on('drag', (_pointer: Phaser.Input.Pointer, obj: Phaser.GameObjects.Image, dragX: number, dragY: number) => {
       obj.x = dragX;
       obj.y = dragY;
@@ -128,6 +145,7 @@ export class SortingGame extends Phaser.Scene {
         });
         this.score++;
         this.scoreText.setText(`⭐ ${this.score}`);
+        this.audio.playSuccess();
         this.showCorrectFeedback(obj.x, obj.y);
 
         if (this.score >= this.totalItems) {
@@ -135,6 +153,7 @@ export class SortingGame extends Phaser.Scene {
         }
       } else {
         // Check if dropped on wrong zone - give feedback
+        this.audio.playWrong();
         this.tweens.add({
           targets: obj,
           x: obj.getData('originalX'),
@@ -224,6 +243,7 @@ export class SortingGame extends Phaser.Scene {
   }
 
   private showCorrectFeedback(x: number, y: number) {
+    VoiceFeedback.speakCorrect();
     const star = this.add.image(x, y, 'star_gold').setScale(0);
     this.tweens.add({
       targets: star,
@@ -248,6 +268,7 @@ export class SortingGame extends Phaser.Scene {
   }
 
   private showWrongFeedback(x: number, y: number) {
+    VoiceFeedback.speakWrong();
     const text = this.add.text(x, y - 30, '再试试~', {
       fontSize: '22px',
       color: '#999999',
@@ -263,6 +284,8 @@ export class SortingGame extends Phaser.Scene {
   }
 
   private showLevelComplete() {
+    this.audio.playComplete();
+    saveStars('SortingGame', 3);
     const { width, height } = this.scale;
 
     this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.4);

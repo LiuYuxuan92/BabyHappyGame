@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { showStarBurst } from '../../components/Particles';
 
 export class CountingGame extends Phaser.Scene {
   private score = 0;
@@ -253,6 +254,9 @@ export class CountingGame extends Phaser.Scene {
       // Correct answer
       this.score++;
       this.scoreText.setText(`⭐ ${this.score}`);
+
+      // Star burst particle effect
+      showStarBurst(this, container.x, container.y);
 
       // Highlight correct button
       btnBg.clear();

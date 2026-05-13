@@ -1,4 +1,8 @@
 import Phaser from 'phaser';
+import { saveStars } from '../../utils/storage';
+import { VoiceFeedback } from '../../components/VoiceFeedback';
+import { AudioManager } from '../../components/AudioManager';
+import { SceneTransition } from '../../components/SceneTransition';
 
 interface Card {
   sprite: Phaser.GameObjects.Container;
@@ -16,12 +20,19 @@ export class MatchingGame extends Phaser.Scene {
   private totalPairs = 0;
   private moves = 0;
   private movesText!: Phaser.GameObjects.Text;
+  private audio!: AudioManager;
 
   constructor() {
     super({ key: 'MatchingGame' });
   }
 
   create() {
+    this.audio = AudioManager.getInstance();
+    this.audio.init(this);
+
+    // Fade in transition
+    SceneTransition.fadeIn(this);
+
     const { width, height } = this.scale;
     this.cards = [];
     this.firstCard = null;
@@ -150,6 +161,7 @@ export class MatchingGame extends Phaser.Scene {
   ) {
     if (!this.canFlip || card.revealed || card.matched) return;
 
+    this.audio.playTap();
     card.revealed = true;
     this.tweens.add({
       targets: card.sprite,
@@ -189,6 +201,8 @@ export class MatchingGame extends Phaser.Scene {
   private handleMatch() {
     this.firstCard!.matched = true;
     this.secondCard!.matched = true;
+    this.audio.playSuccess();
+    VoiceFeedback.speakCorrect();
 
     [this.firstCard!, this.secondCard!].forEach(card => {
       this.tweens.add({
@@ -227,6 +241,8 @@ export class MatchingGame extends Phaser.Scene {
   }
 
   private handleMismatch() {
+    this.audio.playWrong();
+    VoiceFeedback.speakWrong();
     const first = this.firstCard!;
     const second = this.secondCard!;
 
@@ -257,6 +273,9 @@ export class MatchingGame extends Phaser.Scene {
   }
 
   private showComplete() {
+    this.audio.playComplete();
+    const stars = this.moves <= 8 ? 3 : this.moves <= 12 ? 2 : 1;
+    saveStars('MatchingGame', stars);
     const { width, height } = this.scale;
 
     this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.4);
@@ -272,7 +291,6 @@ export class MatchingGame extends Phaser.Scene {
       fontStyle: 'bold',
     }).setOrigin(0.5);
 
-    const stars = this.moves <= 8 ? 3 : this.moves <= 12 ? 2 : 1;
     for (let i = 0; i < 3; i++) {
       const star = this.add.image(width / 2 - 50 + i * 50, height / 2 - 10, i < stars ? 'star_gold' : 'star_gray');
       star.setScale(0);

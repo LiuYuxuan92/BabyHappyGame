@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { showConfetti, showFireworks } from '../../components/Particles';
 
 export class PuzzleGame extends Phaser.Scene {
   private placedCount = 0;
@@ -190,6 +191,10 @@ export class PuzzleGame extends Phaser.Scene {
 
   private showComplete() {
     const { width, height } = this.scale;
+
+    // Celebration particles
+    showConfetti(this);
+    showFireworks(this, width / 2, height / 2 - 50);
 
     this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.4);
 
