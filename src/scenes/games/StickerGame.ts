@@ -1,11 +1,75 @@
 import Phaser from 'phaser';
-import { enhanceGameScene, recordGameComplete } from '../../components/GameExperience';
+import { AudioManager } from '../../components/AudioManager';
+import { enhanceGameScene, recordGameComplete, showFloatingToast } from '../../components/GameExperience';
+
+type StickerCategory = 'animals' | 'ocean' | 'food' | 'traffic';
+
+interface StickerTheme {
+  name: string;
+  bgKey: string;
+  accent: number;
+  label: string;
+}
+
+interface StickerDef {
+  key: string;
+  category: StickerCategory;
+}
+
+type PlacedSticker = Phaser.GameObjects.Image & {
+  baseSize: number;
+};
+
+const THEMES: StickerTheme[] = [
+  { name: 'meadow', bgKey: 'bg_sky_grass', accent: 0x66BB6A, label: '草地' },
+  { name: 'ocean', bgKey: 'bg_ocean', accent: 0x00ACC1, label: '海底' },
+  { name: 'forest', bgKey: 'bg_forest', accent: 0x8BC34A, label: '森林' },
+];
+
+const CATEGORY_LABELS: Record<StickerCategory, string> = {
+  animals: '动物',
+  ocean: '海洋',
+  food: '食物',
+  traffic: '交通',
+};
+
+const STICKERS: StickerDef[] = [
+  { key: 'animal_bear', category: 'animals' },
+  { key: 'animal_cat', category: 'animals' },
+  { key: 'animal_dog', category: 'animals' },
+  { key: 'animal_penguin', category: 'animals' },
+  { key: 'animal_owl', category: 'animals' },
+  { key: 'animal_giraffe', category: 'animals' },
+  { key: 'fish_blue', category: 'ocean' },
+  { key: 'fish_green', category: 'ocean' },
+  { key: 'fish_orange', category: 'ocean' },
+  { key: 'fish_brown', category: 'ocean' },
+  { key: 'fish_grey', category: 'ocean' },
+  { key: 'food_01', category: 'food' },
+  { key: 'food_02', category: 'food' },
+  { key: 'food_05', category: 'food' },
+  { key: 'food_08', category: 'food' },
+  { key: 'food_11', category: 'food' },
+  { key: 'vehicle_blue', category: 'traffic' },
+  { key: 'vehicle_red', category: 'traffic' },
+  { key: 'vehicle_green', category: 'traffic' },
+  { key: 'vehicle_yellow', category: 'traffic' },
+  { key: 'vehicle_orange', category: 'traffic' },
+];
 
 export class StickerGame extends Phaser.Scene {
-  private selectedSticker: string | null = null;
-  private placedStickers: Phaser.GameObjects.Image[] = [];
-  private paletteItems: Phaser.GameObjects.Image[] = [];
+  private selectedSticker = STICKERS[0].key;
+  private selectedPlacedSticker: PlacedSticker | null = null;
+  private placedStickers: PlacedSticker[] = [];
+  private paletteItems: Phaser.GameObjects.Container[] = [];
+  private themeButtons: Phaser.GameObjects.Text[] = [];
+  private categoryButtons: Phaser.GameObjects.Text[] = [];
   private selectionIndicator!: Phaser.GameObjects.Graphics;
+  private placedIndicator!: Phaser.GameObjects.Graphics;
+  private progressText!: Phaser.GameObjects.Text;
+  private activeThemeIndex = 0;
+  private activeCategory: StickerCategory = 'animals';
+  private sceneWidth = 0;
 
   constructor() {
     super({ key: 'StickerGame' });
@@ -13,356 +77,481 @@ export class StickerGame extends Phaser.Scene {
 
   create() {
     const { width, height } = this.scale;
-    this.selectedSticker = null;
+    this.sceneWidth = width - 155;
+    this.selectedSticker = STICKERS[0].key;
+    this.selectedPlacedSticker = null;
     this.placedStickers = [];
     this.paletteItems = [];
+    this.themeButtons = [];
+    this.categoryButtons = [];
 
-    // Gradient background
-    const bg = this.add.graphics();
-    bg.fillGradientStyle(0xE8F5E9, 0xE1F5FE, 0xC8E6C9, 0xB3E5FC);
-    bg.fillRect(0, 0, width, height);
+    this.drawBackdrop();
+    this.createSceneCanvas();
 
-    // Draw scene: blue sky
-    const scene = this.add.graphics();
-    scene.fillStyle(0x87CEEB);
-    scene.fillRect(0, 0, width - 130, height);
-
-    // Green grass
-    scene.fillStyle(0x66BB6A);
-    scene.fillRect(0, height * 0.65, width - 130, height * 0.35);
-
-    // Grass detail - small hills
-    scene.fillStyle(0x4CAF50);
-    scene.fillEllipse(150, height * 0.68, 300, 60);
-    scene.fillEllipse(450, height * 0.72, 250, 50);
-
-    // Yellow sun
-    scene.fillStyle(0xFFEB3B);
-    scene.fillCircle(100, 100, 50);
-
-    // Sun rays
-    scene.lineStyle(4, 0xFFF176);
-    for (let i = 0; i < 8; i++) {
-      const angle = (i * Math.PI * 2) / 8;
-      const x1 = 100 + Math.cos(angle) * 58;
-      const y1 = 100 + Math.sin(angle) * 58;
-      const x2 = 100 + Math.cos(angle) * 78;
-      const y2 = 100 + Math.sin(angle) * 78;
-      scene.lineBetween(x1, y1, x2, y2);
-    }
-
-    // Small clouds
-    scene.fillStyle(0xffffff, 0.8);
-    scene.fillEllipse(300, 70, 80, 30);
-    scene.fillEllipse(320, 60, 60, 25);
-    scene.fillEllipse(500, 90, 70, 28);
-
-    // Back button
-    const backBtn = this.add.image(40, 40, 'btn_back').setInteractive({ useHandCursor: true });
+    const backBtn = this.add.image(40, 40, 'btn_back').setDepth(60).setInteractive({ useHandCursor: true });
     backBtn.on('pointerdown', () => this.scene.start('MenuScene'));
 
-    // Title
-    this.add.text(width / 2 - 60, 35, '🎨 贴纸装饰', {
+    this.add.text(this.sceneWidth / 2, 36, '贴纸创作屋', {
       fontSize: '30px',
-      color: '#333333',
+      color: '#263238',
       fontFamily: 'sans-serif',
       fontStyle: 'bold',
-    }).setOrigin(0.5);
+      stroke: '#ffffff',
+      strokeThickness: 5,
+    }).setOrigin(0.5).setDepth(20);
+
+    this.createGoalStrip();
+    this.createThemePicker();
+    this.createPalettePanel();
+    this.createEditToolbar();
+    this.createActionButtons();
+
+    this.selectionIndicator = this.add.graphics().setDepth(55);
+    this.placedIndicator = this.add.graphics().setDepth(58);
+    this.refreshPalette();
+    this.updateProgress();
     enhanceGameScene(this, 'StickerGame');
+  }
 
-    // Palette panel on the right
-    this.createPalette();
+  private drawBackdrop() {
+    const { width, height } = this.scale;
+    const bg = this.add.graphics();
+    bg.fillGradientStyle(0xFFF8E1, 0xE0F7FA, 0xF1F8E9, 0xE3F2FD);
+    bg.fillRect(0, 0, width, height);
+  }
 
-    // Buttons at bottom
-    this.createButtons();
+  private createSceneCanvas() {
+    const { height } = this.scale;
+    this.add.image(this.sceneWidth / 2, height / 2, THEMES[this.activeThemeIndex].bgKey)
+      .setDisplaySize(this.sceneWidth, height)
+      .setDepth(0);
 
-    // Selection indicator (hidden initially)
-    this.selectionIndicator = this.add.graphics();
-    this.selectionIndicator.setVisible(false);
+    const vignette = this.add.graphics().setDepth(2);
+    vignette.lineStyle(8, 0xffffff, 0.45);
+    vignette.strokeRoundedRect(12, 72, this.sceneWidth - 24, height - 152, 24);
 
-    // Scene tap to place sticker
     const hitZone = this.add.rectangle(
-      (width - 130) / 2, height / 2,
-      width - 130, height,
-      0xffffff, 0
-    ).setInteractive();
+      this.sceneWidth / 2,
+      height / 2,
+      this.sceneWidth,
+      height,
+      0xffffff,
+      0,
+    ).setDepth(1).setInteractive();
 
     hitZone.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (this.selectedSticker) {
-        this.placeSticker(pointer.x, pointer.y);
+      this.placeSticker(pointer.x, pointer.y);
+    });
+  }
+
+  private createGoalStrip() {
+    const { height } = this.scale;
+    const strip = this.add.graphics().setDepth(30);
+    strip.fillStyle(0xffffff, 0.86);
+    strip.fillRoundedRect(88, height - 86, 350, 54, 18);
+    strip.lineStyle(3, 0x26A69A, 0.36);
+    strip.strokeRoundedRect(88, height - 86, 350, 54, 18);
+
+    this.progressText = this.add.text(108, height - 59, '', {
+      fontSize: '18px',
+      color: '#455A64',
+      fontFamily: 'sans-serif',
+      fontStyle: 'bold',
+    }).setOrigin(0, 0.5).setDepth(31);
+  }
+
+  private createThemePicker() {
+    const x = 130;
+    THEMES.forEach((theme, index) => {
+      const button = this.add.text(x + index * 88, 84, theme.label, {
+        fontSize: '18px',
+        color: index === this.activeThemeIndex ? '#ffffff' : '#455A64',
+        fontFamily: 'sans-serif',
+        fontStyle: 'bold',
+        backgroundColor: index === this.activeThemeIndex ? this.toHex(theme.accent) : '#ffffffdd',
+        padding: { x: 16, y: 8 },
+      }).setOrigin(0.5).setDepth(35).setInteractive({ useHandCursor: true });
+
+      button.on('pointerdown', () => this.switchTheme(index));
+      this.themeButtons.push(button);
+    });
+  }
+
+  private createPalettePanel() {
+    const { width, height } = this.scale;
+    const panelX = width - 150;
+    const panel = this.add.graphics().setDepth(40);
+    panel.fillStyle(0xffffff, 0.94);
+    panel.fillRoundedRect(panelX, 12, 138, height - 24, 20);
+    panel.lineStyle(3, 0xB2DFDB, 0.8);
+    panel.strokeRoundedRect(panelX, 12, 138, height - 24, 20);
+
+    this.add.text(panelX + 69, 42, '贴纸库', {
+      fontSize: '20px',
+      color: '#37474F',
+      fontFamily: 'sans-serif',
+      fontStyle: 'bold',
+    }).setOrigin(0.5).setDepth(41);
+
+    (Object.keys(CATEGORY_LABELS) as StickerCategory[]).forEach((category, index) => {
+      const col = index % 2;
+      const row = Math.floor(index / 2);
+      const button = this.add.text(panelX + 39 + col * 60, 78 + row * 38, CATEGORY_LABELS[category], {
+        fontSize: '14px',
+        color: category === this.activeCategory ? '#ffffff' : '#546E7A',
+        fontFamily: 'sans-serif',
+        fontStyle: 'bold',
+        backgroundColor: category === this.activeCategory ? '#26A69A' : '#ECEFF1',
+        padding: { x: 10, y: 7 },
+      }).setOrigin(0.5).setDepth(42).setInteractive({ useHandCursor: true });
+
+      button.on('pointerdown', () => {
+        AudioManager.getInstance().playTap();
+        this.activeCategory = category;
+        this.refreshPalette();
+      });
+      this.categoryButtons.push(button);
+    });
+  }
+
+  private refreshPalette() {
+    const { width } = this.scale;
+    const panelX = width - 150;
+    this.paletteItems.forEach(item => item.destroy());
+    this.paletteItems = [];
+    this.selectionIndicator?.clear();
+
+    this.categoryButtons.forEach((button, index) => {
+      const category = (Object.keys(CATEGORY_LABELS) as StickerCategory[])[index];
+      button.setColor(category === this.activeCategory ? '#ffffff' : '#546E7A');
+      button.setBackgroundColor(category === this.activeCategory ? '#26A69A' : '#ECEFF1');
+    });
+
+    const choices = STICKERS.filter(sticker => sticker.category === this.activeCategory);
+    choices.forEach((def, index) => {
+      const col = index % 2;
+      const row = Math.floor(index / 2);
+      const x = panelX + 42 + col * 58;
+      const y = 160 + row * 74;
+      const card = this.add.container(x, y).setDepth(44);
+      const bg = this.add.graphics();
+      bg.fillStyle(0xF7FBFC, 1);
+      bg.fillRoundedRect(-25, -29, 50, 58, 14);
+      bg.lineStyle(2, 0xCFD8DC, 0.8);
+      bg.strokeRoundedRect(-25, -29, 50, 58, 14);
+      const icon = this.add.image(0, 0, def.key).setDisplaySize(42, 42);
+      card.add([bg, icon]);
+      card.setSize(54, 62).setInteractive({ useHandCursor: true });
+      card.setScale(0);
+      this.tweens.add({ targets: card, scale: 1, duration: 220, delay: index * 45, ease: 'Back.easeOut' });
+      card.on('pointerdown', () => this.selectSticker(def.key, card));
+      this.paletteItems.push(card);
+
+      if (def.key === this.selectedSticker) {
+        this.time.delayedCall(20, () => this.drawPaletteSelection(card));
       }
     });
 
-    // Instruction text
-    this.add.text((width - 130) / 2, height - 25, '选择右边的贴纸，点击画面放置', {
-      fontSize: '14px',
-      color: '#666666',
-      fontFamily: 'sans-serif',
-      backgroundColor: '#ffffffcc',
-      padding: { x: 8, y: 4 },
-    }).setOrigin(0.5);
+    if (!choices.some(def => def.key === this.selectedSticker)) {
+      this.selectedSticker = choices[0]?.key ?? STICKERS[0].key;
+      const first = this.paletteItems[0];
+      if (first) this.time.delayedCall(20, () => this.drawPaletteSelection(first));
+    }
   }
 
-  private createPalette() {
-    const { width, height } = this.scale;
-    const paletteX = width - 65;
-    const paletteW = 120;
-
-    // Palette background
-    const paletteBg = this.add.graphics();
-    paletteBg.fillStyle(0xffffff, 0.9);
-    paletteBg.fillRoundedRect(width - paletteW - 5, 70, paletteW, height - 140, 16);
-    paletteBg.lineStyle(3, 0xE0E0E0);
-    paletteBg.strokeRoundedRect(width - paletteW - 5, 70, paletteW, height - 140, 16);
-
-    // Palette title
-    this.add.text(paletteX, 90, '贴纸', {
-      fontSize: '18px',
-      color: '#555555',
-      fontFamily: 'sans-serif',
-      fontStyle: 'bold',
-    }).setOrigin(0.5);
-
-    const stickerKeys = [
-      'animal_bear', 'animal_cat', 'animal_dog',
-      'animal_penguin', 'animal_owl', 'fish_blue',
-    ];
-
-    const startY = 130;
-    const spacing = 85;
-
-    stickerKeys.forEach((key, i) => {
-      const y = startY + i * spacing;
-      const sticker = this.add.image(paletteX, y, key);
-      sticker.setDisplaySize(60, 60);
-      sticker.setInteractive({ useHandCursor: true });
-
-      sticker.on('pointerdown', () => {
-        this.selectSticker(key, sticker);
-      });
-
-      // Entrance animation
-      sticker.setScale(0);
-      this.tweens.add({
-        targets: sticker,
-        scale: sticker.scaleX || 1,
-        displayWidth: 60,
-        displayHeight: 60,
-        duration: 300,
-        delay: i * 80,
-        ease: 'Back.easeOut',
-      });
-
-      this.paletteItems.push(sticker);
-    });
-  }
-
-  private selectSticker(key: string, sprite: Phaser.GameObjects.Image) {
+  private selectSticker(key: string, card: Phaser.GameObjects.Container) {
     this.selectedSticker = key;
+    this.selectedPlacedSticker = null;
+    this.placedIndicator.clear();
+    AudioManager.getInstance().playTap();
+    this.drawPaletteSelection(card);
+    this.tweens.add({ targets: card, scale: 1.08, duration: 120, yoyo: true, ease: 'Sine.easeOut' });
+  }
 
-    // Reset all palette items
-    this.paletteItems.forEach(item => {
-      this.tweens.add({
-        targets: item,
-        displayWidth: 60,
-        displayHeight: 60,
-        duration: 150,
-      });
-    });
-
-    // Highlight selected
-    this.tweens.add({
-      targets: sprite,
-      displayWidth: 72,
-      displayHeight: 72,
-      duration: 200,
-      ease: 'Back.easeOut',
-    });
-
-    // Update selection indicator
+  private drawPaletteSelection(card: Phaser.GameObjects.Container) {
     this.selectionIndicator.clear();
-    this.selectionIndicator.lineStyle(3, 0xFF6B35);
-    this.selectionIndicator.strokeRoundedRect(
-      sprite.x - 40, sprite.y - 40, 80, 80, 12
-    );
-    this.selectionIndicator.setVisible(true);
+    this.selectionIndicator.lineStyle(4, 0xFF7043, 0.95);
+    this.selectionIndicator.strokeRoundedRect(card.x - 31, card.y - 35, 62, 70, 16);
   }
 
   private placeSticker(x: number, y: number) {
-    if (!this.selectedSticker) return;
+    if (!this.selectedSticker || x > this.sceneWidth - 18 || y < 76 || y > this.scale.height - 100) {
+      showFloatingToast(this, '在画布里贴上它', 0xFFB300);
+      return;
+    }
 
-    const sticker = this.add.image(x, y, this.selectedSticker);
-    sticker.setDisplaySize(70, 70);
+    AudioManager.getInstance().playSuccess();
+    const size = this.activeCategory === 'traffic' ? 82 : 74;
+    const sticker = this.add.image(x, y, this.selectedSticker).setDepth(12).setDisplaySize(size, size) as PlacedSticker;
+    sticker.baseSize = size;
     sticker.setInteractive({ useHandCursor: true, draggable: true });
-
-    // Place animation - bounce in
     sticker.setScale(0);
     this.tweens.add({
       targets: sticker,
-      scaleX: sticker.scaleX || 1,
-      scaleY: sticker.scaleY || 1,
-      displayWidth: 70,
-      displayHeight: 70,
-      duration: 350,
+      scaleX: 1,
+      scaleY: 1,
+      duration: 300,
       ease: 'Back.easeOut',
     });
 
-    // Small star burst on placement
-    const star = this.add.image(x, y, 'star_gold').setScale(0).setAlpha(0.7);
+    const sparkle = this.add.image(x, y, 'star_gold').setDepth(14).setScale(0).setAlpha(0.8);
     this.tweens.add({
-      targets: star,
-      scale: 1.2,
+      targets: sparkle,
+      scale: 1.35,
       alpha: 0,
-      duration: 500,
-      onComplete: () => star.destroy(),
+      angle: 120,
+      duration: 520,
+      onComplete: () => sparkle.destroy(),
     });
 
-    this.placedStickers.push(sticker);
-
-    // Drag events for placed sticker
-    sticker.on('drag', (_pointer: Phaser.Input.Pointer, dragX: number, dragY: number) => {
-      sticker.x = dragX;
-      sticker.y = dragY;
+    sticker.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      pointer.event.stopPropagation();
+      this.selectPlacedSticker(sticker);
     });
 
     sticker.on('dragstart', () => {
-      this.tweens.add({
-        targets: sticker,
-        displayWidth: 80,
-        displayHeight: 80,
-        duration: 100,
-      });
+      this.selectPlacedSticker(sticker);
+      AudioManager.getInstance().playDrag();
+      this.tweens.add({ targets: sticker, scaleX: 1.12, scaleY: 1.12, duration: 100 });
+    });
+
+    sticker.on('drag', (_pointer: Phaser.Input.Pointer, dragX: number, dragY: number) => {
+      sticker.x = Phaser.Math.Clamp(dragX, 34, this.sceneWidth - 34);
+      sticker.y = Phaser.Math.Clamp(dragY, 100, this.scale.height - 118);
+      this.drawPlacedSelection();
     });
 
     sticker.on('dragend', () => {
-      this.tweens.add({
-        targets: sticker,
-        displayWidth: 70,
-        displayHeight: 70,
-        duration: 100,
+      this.tweens.add({ targets: sticker, scaleX: 1, scaleY: 1, duration: 120 });
+      this.drawPlacedSelection();
+    });
+
+    this.placedStickers.push(sticker);
+    this.selectPlacedSticker(sticker);
+    this.updateProgress();
+  }
+
+  private createEditToolbar() {
+    const { height } = this.scale;
+    const tools = [
+      { label: '小', action: () => this.resizeSelected(0.9) },
+      { label: '大', action: () => this.resizeSelected(1.1) },
+      { label: '转', action: () => this.rotateSelected() },
+      { label: '删', action: () => this.deleteSelected() },
+    ];
+
+    tools.forEach((tool, index) => {
+      const button = this.add.text(470 + index * 64, height - 59, tool.label, {
+        fontSize: '18px',
+        color: '#ffffff',
+        fontFamily: 'sans-serif',
+        fontStyle: 'bold',
+        backgroundColor: index === 3 ? '#EF5350' : '#546E7A',
+        padding: { x: 15, y: 10 },
+      }).setOrigin(0.5).setDepth(35).setInteractive({ useHandCursor: true });
+
+      button.on('pointerdown', () => {
+        if (!this.selectedPlacedSticker) {
+          showFloatingToast(this, '先点一个已贴好的贴纸', 0xFFB300);
+          return;
+        }
+        AudioManager.getInstance().playTap();
+        tool.action();
       });
     });
   }
 
-  private createButtons() {
-    const { width, height } = this.scale;
-    const btnY = height - 55;
-
-    // Clear button
-    const clearBtn = this.add.text(120, btnY, '🗑️ 清除', {
-      fontSize: '22px',
+  private createActionButtons() {
+    const { height } = this.scale;
+    const clearBtn = this.add.text(62, height - 59, '清空', {
+      fontSize: '18px',
       color: '#ffffff',
       fontFamily: 'sans-serif',
       fontStyle: 'bold',
       backgroundColor: '#EF5350',
-      padding: { x: 20, y: 10 },
-    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+      padding: { x: 18, y: 10 },
+    }).setOrigin(0.5).setDepth(35).setInteractive({ useHandCursor: true });
 
-    clearBtn.on('pointerdown', () => {
-      this.clearAllStickers();
-    });
+    clearBtn.on('pointerdown', () => this.clearAllStickers());
 
-    clearBtn.on('pointerover', () => {
-      this.tweens.add({ targets: clearBtn, scale: 1.05, duration: 100 });
-    });
-    clearBtn.on('pointerout', () => {
-      this.tweens.add({ targets: clearBtn, scale: 1, duration: 100 });
-    });
-
-    // Done button
-    const doneBtn = this.add.text(320, btnY, '✅ 完成', {
-      fontSize: '22px',
+    const doneBtn = this.add.text(this.sceneWidth - 78, height - 59, '完成作品', {
+      fontSize: '20px',
       color: '#ffffff',
       fontFamily: 'sans-serif',
       fontStyle: 'bold',
-      backgroundColor: '#4CAF50',
-      padding: { x: 20, y: 10 },
-    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+      backgroundColor: '#43A047',
+      padding: { x: 22, y: 10 },
+    }).setOrigin(0.5).setDepth(35).setInteractive({ useHandCursor: true });
 
-    doneBtn.on('pointerdown', () => {
-      this.showComplete();
-    });
+    doneBtn.on('pointerdown', () => this.showComplete());
+  }
 
-    doneBtn.on('pointerover', () => {
-      this.tweens.add({ targets: doneBtn, scale: 1.05, duration: 100 });
+  private switchTheme(index: number) {
+    if (index === this.activeThemeIndex) return;
+    this.activeThemeIndex = index;
+    AudioManager.getInstance().playTap();
+    this.children.getAll().forEach(child => {
+      if (child instanceof Phaser.GameObjects.Image && THEMES.some(theme => child.texture.key === theme.bgKey)) {
+        child.setTexture(THEMES[this.activeThemeIndex].bgKey).setDisplaySize(this.sceneWidth, this.scale.height);
+      }
     });
-    doneBtn.on('pointerout', () => {
-      this.tweens.add({ targets: doneBtn, scale: 1, duration: 100 });
+    this.themeButtons.forEach((button, buttonIndex) => {
+      button.setColor(buttonIndex === index ? '#ffffff' : '#455A64');
+      button.setBackgroundColor(buttonIndex === index ? this.toHex(THEMES[index].accent) : '#ffffffdd');
+    });
+    showFloatingToast(this, `切换到${THEMES[index].label}场景`, THEMES[index].accent);
+  }
+
+  private selectPlacedSticker(sticker: PlacedSticker) {
+    this.selectedPlacedSticker = sticker;
+    sticker.setDepth(16);
+    this.drawPlacedSelection();
+  }
+
+  private drawPlacedSelection() {
+    this.placedIndicator.clear();
+    if (!this.selectedPlacedSticker?.active) return;
+    const sticker = this.selectedPlacedSticker;
+    const radius = Math.max(sticker.displayWidth, sticker.displayHeight) / 2 + 10;
+    this.placedIndicator.lineStyle(3, 0xffffff, 0.92);
+    this.placedIndicator.strokeCircle(sticker.x, sticker.y, radius);
+    this.placedIndicator.lineStyle(2, 0xFF7043, 0.95);
+    this.placedIndicator.strokeCircle(sticker.x, sticker.y, radius + 5);
+  }
+
+  private resizeSelected(factor: number) {
+    if (!this.selectedPlacedSticker) return;
+    const sticker = this.selectedPlacedSticker;
+    const nextWidth = Phaser.Math.Clamp(sticker.displayWidth * factor, 42, 130);
+    const ratio = nextWidth / sticker.displayWidth;
+    sticker.setDisplaySize(nextWidth, sticker.displayHeight * ratio);
+    this.drawPlacedSelection();
+  }
+
+  private rotateSelected() {
+    if (!this.selectedPlacedSticker) return;
+    this.tweens.add({
+      targets: this.selectedPlacedSticker,
+      angle: this.selectedPlacedSticker.angle + 18,
+      duration: 120,
+      ease: 'Sine.easeOut',
+      onUpdate: () => this.drawPlacedSelection(),
     });
   }
 
+  private deleteSelected() {
+    const sticker = this.selectedPlacedSticker;
+    if (!sticker) return;
+    this.placedStickers = this.placedStickers.filter(item => item !== sticker);
+    this.selectedPlacedSticker = null;
+    this.placedIndicator.clear();
+    this.tweens.add({
+      targets: sticker,
+      scale: 0,
+      alpha: 0,
+      angle: sticker.angle + 25,
+      duration: 180,
+      onComplete: () => sticker.destroy(),
+    });
+    this.updateProgress();
+  }
+
   private clearAllStickers() {
-    this.placedStickers.forEach((sticker, i) => {
+    if (this.placedStickers.length === 0) {
+      showFloatingToast(this, '画布还是空的', 0xFFB300);
+      return;
+    }
+    AudioManager.getInstance().playWrong();
+    this.placedStickers.forEach((sticker, index) => {
       this.tweens.add({
         targets: sticker,
         scale: 0,
         alpha: 0,
-        duration: 200,
-        delay: i * 50,
+        duration: 180,
+        delay: index * 35,
         onComplete: () => sticker.destroy(),
       });
     });
     this.placedStickers = [];
+    this.selectedPlacedSticker = null;
+    this.placedIndicator.clear();
+    this.updateProgress();
+  }
+
+  private updateProgress() {
+    const count = this.placedStickers.length;
+    const unique = new Set(this.placedStickers.map(sticker => sticker.texture.key)).size;
+    const targetText = count >= 6 && unique >= 3 ? '已达成 3 星目标' : `再贴 ${Math.max(0, 6 - count)} 个，使用 ${Math.max(0, 3 - unique)} 种`;
+    this.progressText?.setText(`创作目标：6 个贴纸 + 3 种类型  ·  ${targetText}`);
   }
 
   private showComplete() {
     const { width, height } = this.scale;
     const stickerCount = this.placedStickers.length;
-    const starCount = stickerCount >= 5 ? 3 : stickerCount >= 3 ? 2 : 1;
-    recordGameComplete(this, 'StickerGame', starCount, '作品完成了');
+    const uniqueCount = new Set(this.placedStickers.map(sticker => sticker.texture.key)).size;
+    const starCount = stickerCount >= 6 && uniqueCount >= 3 ? 3 : stickerCount >= 4 && uniqueCount >= 2 ? 2 : 1;
+    recordGameComplete(this, 'StickerGame', starCount, '贴纸作品完成了');
 
-    // Overlay
-    const overlay = this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.4);
-    overlay.setDepth(100);
+    const overlay = this.add.rectangle(width / 2, height / 2, width, height, 0x263238, 0.45).setDepth(100);
+    const panel = this.add.container(width / 2, height / 2).setDepth(101);
+    const bg = this.add.graphics();
+    bg.fillStyle(0xffffff, 0.97);
+    bg.fillRoundedRect(-215, -145, 430, 290, 28);
+    bg.lineStyle(4, THEMES[this.activeThemeIndex].accent, 0.65);
+    bg.strokeRoundedRect(-215, -145, 430, 290, 28);
 
-    // Panel
-    const panel = this.add.graphics();
-    panel.fillStyle(0xffffff, 0.95);
-    panel.fillRoundedRect(width / 2 - 180, height / 2 - 120, 360, 240, 24);
-    panel.setDepth(101);
-
-    // Title
-    const title = this.add.text(width / 2, height / 2 - 70, '🎉 作品完成！', {
+    const title = this.add.text(0, -96, '作品完成', {
       fontSize: '34px',
-      color: '#FF6B35',
+      color: '#FF7043',
       fontFamily: 'sans-serif',
       fontStyle: 'bold',
-    }).setOrigin(0.5).setDepth(102);
+    }).setOrigin(0.5);
 
-    // Stars
+    const themeText = this.add.text(0, -56, `${THEMES[this.activeThemeIndex].label}主题 · ${stickerCount} 个贴纸 · ${uniqueCount} 种图案`, {
+      fontSize: '18px',
+      color: '#607D8B',
+      fontFamily: 'sans-serif',
+    }).setOrigin(0.5);
+
+    panel.add([bg, title, themeText]);
+
     for (let i = 0; i < 3; i++) {
-      const star = this.add.image(
-        width / 2 - 50 + i * 50,
-        height / 2 - 10,
-        i < starCount ? 'star_gold' : 'star_gray'
-      ).setDepth(102);
+      const star = this.add.image(-58 + i * 58, 8, i < starCount ? 'star_gold' : 'star_gray');
       star.setScale(0);
-      this.tweens.add({
-        targets: star,
-        scale: 1,
-        duration: 300,
-        delay: i * 200,
-        ease: 'Back.easeOut',
-      });
+      panel.add(star);
+      this.tweens.add({ targets: star, scale: 1, duration: 280, delay: i * 150, ease: 'Back.easeOut' });
     }
 
-    // Message
-    this.add.text(width / 2, height / 2 + 35, `你放置了 ${stickerCount} 个贴纸！`, {
-      fontSize: '20px',
-      color: '#666666',
-      fontFamily: 'sans-serif',
-    }).setOrigin(0.5).setDepth(102);
-
-    // Replay button
-    const replayBtn = this.add.text(width / 2, height / 2 + 80, '再玩一次 🔄', {
-      fontSize: '24px',
+    const replayBtn = this.add.text(-72, 92, '再做一张', {
+      fontSize: '22px',
       color: '#ffffff',
       fontFamily: 'sans-serif',
       fontStyle: 'bold',
-      backgroundColor: '#2196F3',
-      padding: { x: 24, y: 10 },
-    }).setOrigin(0.5).setInteractive({ useHandCursor: true }).setDepth(102);
+      backgroundColor: '#42A5F5',
+      padding: { x: 22, y: 11 },
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+
+    const keepBtn = this.add.text(90, 92, '继续装饰', {
+      fontSize: '22px',
+      color: '#ffffff',
+      fontFamily: 'sans-serif',
+      fontStyle: 'bold',
+      backgroundColor: '#66BB6A',
+      padding: { x: 22, y: 11 },
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
     replayBtn.on('pointerdown', () => this.scene.restart());
+    keepBtn.on('pointerdown', () => {
+      overlay.destroy();
+      panel.destroy();
+    });
+
+    panel.add([replayBtn, keepBtn]);
+    panel.setScale(0.86).setAlpha(0);
+    this.tweens.add({ targets: panel, scale: 1, alpha: 1, duration: 260, ease: 'Back.easeOut' });
+  }
+
+  private toHex(color: number): string {
+    return `#${color.toString(16).padStart(6, '0')}`;
   }
 }
