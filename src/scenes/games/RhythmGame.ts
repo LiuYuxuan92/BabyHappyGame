@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { enhanceGameScene } from '../../components/GameExperience';
+import { enhanceGameScene, recordGameComplete } from '../../components/GameExperience';
 
 interface RhythmCircle {
   graphics: Phaser.GameObjects.Graphics;
@@ -415,6 +415,7 @@ export class RhythmGame extends Phaser.Scene {
 
   private showLevelUp() {
     const { width, height } = this.scale;
+    recordGameComplete(this, 'RhythmGame', Math.min(this.level, 3), '节奏很棒');
 
     // Overlay
     const overlay = this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.4);

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { enhanceGameScene } from '../../components/GameExperience';
+import { enhanceGameScene, recordGameComplete } from '../../components/GameExperience';
 
 interface Difference {
   x: number;
@@ -329,6 +329,7 @@ export class FindDiffGame extends Phaser.Scene {
 
   private showComplete() {
     const { width, height } = this.scale;
+    recordGameComplete(this, 'FindDiffGame', 3, '观察得真仔细');
 
     this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.4);
 

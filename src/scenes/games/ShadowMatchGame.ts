@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { enhanceGameScene } from '../../components/GameExperience';
+import { enhanceGameScene, recordGameComplete } from '../../components/GameExperience';
 
 interface AnimalPair {
   key: string;
@@ -270,6 +270,7 @@ export class ShadowMatchGame extends Phaser.Scene {
 
   private showComplete() {
     const { width, height } = this.scale;
+    recordGameComplete(this, 'ShadowMatchGame', 3, '影子配对完成');
 
     this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.4);
 

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bimiboo-v5';
+const CACHE_NAME = 'bimiboo-v6';
 const CORE_ASSETS = [
   './',
   './index.html',

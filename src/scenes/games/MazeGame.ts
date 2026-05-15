@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { enhanceGameScene } from '../../components/GameExperience';
+import { enhanceGameScene, recordGameComplete } from '../../components/GameExperience';
 
 interface Cell {
   row: number;
@@ -377,6 +377,7 @@ export class MazeGame extends Phaser.Scene {
 
   private showComplete() {
     const { width, height } = this.scale;
+    recordGameComplete(this, 'MazeGame', Math.min(this.level, 3), '找到出口了');
 
     // Overlay
     const overlay = this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.4);

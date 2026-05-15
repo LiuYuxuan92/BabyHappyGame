@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { enhanceGameScene } from '../../components/GameExperience';
+import { enhanceGameScene, recordGameComplete } from '../../components/GameExperience';
 
 interface ColorRegion {
   graphics: Phaser.GameObjects.Graphics;
@@ -384,6 +384,7 @@ export class ColoringGame extends Phaser.Scene {
 
   private showComplete() {
     const { width, height } = this.scale;
+    recordGameComplete(this, 'ColoringGame', 3, '画得真棒');
 
     this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.4);
 

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { enhanceGameScene } from '../../components/GameExperience';
+import { enhanceGameScene, recordGameComplete } from '../../components/GameExperience';
 
 export class StickerGame extends Phaser.Scene {
   private selectedSticker: string | null = null;
@@ -307,6 +307,9 @@ export class StickerGame extends Phaser.Scene {
 
   private showComplete() {
     const { width, height } = this.scale;
+    const stickerCount = this.placedStickers.length;
+    const starCount = stickerCount >= 5 ? 3 : stickerCount >= 3 ? 2 : 1;
+    recordGameComplete(this, 'StickerGame', starCount, '作品完成了');
 
     // Overlay
     const overlay = this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.4);
@@ -327,9 +330,6 @@ export class StickerGame extends Phaser.Scene {
     }).setOrigin(0.5).setDepth(102);
 
     // Stars
-    const stickerCount = this.placedStickers.length;
-    const starCount = stickerCount >= 5 ? 3 : stickerCount >= 3 ? 2 : 1;
-
     for (let i = 0; i < 3; i++) {
       const star = this.add.image(
         width / 2 - 50 + i * 50,

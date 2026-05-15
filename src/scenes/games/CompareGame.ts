@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { enhanceGameScene } from '../../components/GameExperience';
+import { enhanceGameScene, recordGameComplete } from '../../components/GameExperience';
 
 interface RoundData {
   leftCount: number;
@@ -345,6 +345,8 @@ export class CompareGame extends Phaser.Scene {
 
   private showFinalScore() {
     const { width, height } = this.scale;
+    const starCount = this.score >= 5 ? 3 : this.score >= 3 ? 2 : 1;
+    recordGameComplete(this, 'CompareGame', starCount, '比较得很准确');
 
     // Overlay
     this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.4).setDepth(100);
@@ -371,7 +373,6 @@ export class CompareGame extends Phaser.Scene {
     }).setOrigin(0.5).setDepth(102);
 
     // Stars based on score
-    const starCount = this.score >= 5 ? 3 : this.score >= 3 ? 2 : 1;
     for (let i = 0; i < 3; i++) {
       const star = this.add.image(
         width / 2 - 50 + i * 50,

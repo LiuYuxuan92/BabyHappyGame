@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { enhanceGameScene } from '../../components/GameExperience';
+import { enhanceGameScene, recordGameComplete } from '../../components/GameExperience';
 
 interface DotPoint {
   x: number;
@@ -386,6 +386,7 @@ export class ConnectDotsGame extends Phaser.Scene {
 
   private showComplete() {
     const { width, height } = this.scale;
+    recordGameComplete(this, 'ConnectDotsGame', 3, '连线完成了');
 
     // Overlay
     const overlay = this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.4);

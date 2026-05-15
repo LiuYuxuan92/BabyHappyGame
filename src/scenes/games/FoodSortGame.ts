@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { enhanceGameScene } from '../../components/GameExperience';
+import { enhanceGameScene, recordGameComplete } from '../../components/GameExperience';
 
 interface FoodItem {
   key: string;
@@ -249,6 +249,7 @@ export class FoodSortGame extends Phaser.Scene {
 
   private showComplete() {
     const { width, height } = this.scale;
+    recordGameComplete(this, 'FoodSortGame', 3, '分类全部正确');
 
     this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.4);
 

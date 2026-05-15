@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
 import { getGameInfo } from '../data/games';
-import { getSettings, hasSeenGuide, markGuideSeen } from '../utils/storage';
+import { getSettings, hasSeenGuide, markGuideSeen, saveStars } from '../utils/storage';
 import { AudioManager } from './AudioManager';
+import { showConfetti } from './Particles';
 import { RestReminder } from './RestReminder';
 import { VoiceFeedback } from './VoiceFeedback';
 
@@ -52,6 +53,13 @@ export function showFloatingToast(scene: Phaser.Scene, text: string, accent = 0x
       });
     },
   });
+}
+
+export function recordGameComplete(scene: Phaser.Scene, gameKey: string, stars: number, praise: string): void {
+  saveStars(gameKey, stars);
+  AudioManager.getInstance().playComplete();
+  VoiceFeedback.speak(praise);
+  showConfetti(scene);
 }
 
 function showGuide(scene: Phaser.Scene, gameKey: string, title: string, guide: string, accent: number): void {

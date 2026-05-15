@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { enhanceGameScene } from '../../components/GameExperience';
+import { enhanceGameScene, recordGameComplete } from '../../components/GameExperience';
 
 interface SortableItem {
   sprite: Phaser.GameObjects.Image;
@@ -401,6 +401,7 @@ export class SizeSortGame extends Phaser.Scene {
 
   private showLevelComplete() {
     const { width, height } = this.scale;
+    recordGameComplete(this, 'SizeSortGame', 3, '大小顺序排好了');
 
     // Overlay
     this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.4);

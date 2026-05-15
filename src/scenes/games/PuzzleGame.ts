@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { enhanceGameScene } from '../../components/GameExperience';
+import { enhanceGameScene, recordGameComplete } from '../../components/GameExperience';
 import { showConfetti, showFireworks } from '../../components/Particles';
 
 export class PuzzleGame extends Phaser.Scene {
@@ -239,6 +239,7 @@ export class PuzzleGame extends Phaser.Scene {
 
   private showComplete() {
     const { width, height } = this.scale;
+    recordGameComplete(this, 'PuzzleGame', 3, '拼图完成了');
 
     showConfetti(this);
     showFireworks(this, width / 2, height / 2 - 50);

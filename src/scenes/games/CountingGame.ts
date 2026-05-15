@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { enhanceGameScene } from '../../components/GameExperience';
+import { enhanceGameScene, recordGameComplete } from '../../components/GameExperience';
 import { showStarBurst } from '../../components/Particles';
 
 export class CountingGame extends Phaser.Scene {
@@ -358,6 +358,8 @@ export class CountingGame extends Phaser.Scene {
 
   private showCompletion() {
     const { width, height } = this.scale;
+    const stars = this.score >= 5 ? 3 : this.score >= 3 ? 2 : 1;
+    recordGameComplete(this, 'CountingGame', stars, '数得真准确');
 
     // Overlay
     this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.4);
@@ -383,7 +385,6 @@ export class CountingGame extends Phaser.Scene {
     }).setOrigin(0.5);
 
     // Stars based on score
-    const stars = this.score >= 5 ? 3 : this.score >= 3 ? 2 : 1;
     for (let i = 0; i < 3; i++) {
       const star = this.add.image(
         width / 2 - 50 + i * 50,
