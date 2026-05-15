@@ -1,7 +1,7 @@
 const CACHE_NAME = 'bimiboo-v3';
 const CORE_ASSETS = [
-  '/',
-  '/index.html',
+  './',
+  './index.html',
 ];
 
 self.addEventListener('install', (event) => {
@@ -27,7 +27,7 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  if (url.pathname.startsWith('/assets/')) {
+  if (url.pathname.includes('/assets/')) {
     // Cache-first for assets
     event.respondWith(
       caches.match(event.request).then((cached) => {
