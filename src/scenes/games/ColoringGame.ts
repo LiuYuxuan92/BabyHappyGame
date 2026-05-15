@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { enhanceGameScene } from '../../components/GameExperience';
 
 interface ColorRegion {
   graphics: Phaser.GameObjects.Graphics;
@@ -41,6 +42,7 @@ export class ColoringGame extends Phaser.Scene {
       fontFamily: 'sans-serif',
       fontStyle: 'bold',
     }).setOrigin(0.5);
+    enhanceGameScene(this, 'ColoringGame');
 
     // Pick a random shape to color
     const shapes = ['cat', 'fish', 'star'];

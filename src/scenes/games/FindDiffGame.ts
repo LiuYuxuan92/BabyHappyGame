@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { enhanceGameScene } from '../../components/GameExperience';
 
 interface Difference {
   x: number;
@@ -38,6 +39,7 @@ export class FindDiffGame extends Phaser.Scene {
       fontFamily: 'sans-serif',
       fontStyle: 'bold',
     }).setOrigin(0.5);
+    enhanceGameScene(this, 'FindDiffGame');
 
     // Status text
     this.statusText = this.add.text(width / 2, 70, '', {

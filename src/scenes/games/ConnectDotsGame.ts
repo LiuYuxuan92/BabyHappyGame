@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { enhanceGameScene } from '../../components/GameExperience';
 
 interface DotPoint {
   x: number;
@@ -50,6 +51,7 @@ export class ConnectDotsGame extends Phaser.Scene {
       fontFamily: 'sans-serif',
       fontStyle: 'bold',
     }).setOrigin(0.5);
+    enhanceGameScene(this, 'ConnectDotsGame');
 
     // Instruction
     this.add.text(width / 2, height - 20, '按数字顺序点击圆点来画图形', {

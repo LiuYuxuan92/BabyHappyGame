@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { enhanceGameScene } from '../../components/GameExperience';
 
 export class StickerGame extends Phaser.Scene {
   private selectedSticker: string | null = null;
@@ -67,6 +68,7 @@ export class StickerGame extends Phaser.Scene {
       fontFamily: 'sans-serif',
       fontStyle: 'bold',
     }).setOrigin(0.5);
+    enhanceGameScene(this, 'StickerGame');
 
     // Palette panel on the right
     this.createPalette();

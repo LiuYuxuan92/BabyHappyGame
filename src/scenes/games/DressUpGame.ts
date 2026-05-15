@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { enhanceGameScene } from '../../components/GameExperience';
 
 interface ClothingItem {
   graphics: Phaser.GameObjects.Container;
@@ -40,6 +41,7 @@ export class DressUpGame extends Phaser.Scene {
       fontFamily: 'sans-serif',
       fontStyle: 'bold',
     }).setOrigin(0.5);
+    enhanceGameScene(this, 'DressUpGame');
 
     // Draw character in center
     this.characterX = width / 2;

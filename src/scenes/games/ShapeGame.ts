@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { enhanceGameScene } from '../../components/GameExperience';
 
 interface ShapeDef {
   type: string;
@@ -44,6 +45,7 @@ export class ShapeGame extends Phaser.Scene {
       fontFamily: 'sans-serif',
       fontStyle: 'bold',
     }).setOrigin(0.5);
+    enhanceGameScene(this, 'ShapeGame');
 
     // Level indicator
     this.add.text(width - 20, 35, `第 ${this.level} 关`, {

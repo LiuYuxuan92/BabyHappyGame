@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { enhanceGameScene } from '../../components/GameExperience';
 
 interface RoundData {
   leftCount: number;
@@ -50,6 +51,7 @@ export class CompareGame extends Phaser.Scene {
       fontFamily: 'sans-serif',
       fontStyle: 'bold',
     }).setOrigin(0.5);
+    enhanceGameScene(this, 'CompareGame');
 
     // Round indicator
     this.roundText = this.add.text(width - 20, 25, `第 1/${this.totalRounds} 题`, {

@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { enhanceGameScene } from '../../components/GameExperience';
 
 interface RhythmCircle {
   graphics: Phaser.GameObjects.Graphics;
@@ -62,6 +63,7 @@ export class RhythmGame extends Phaser.Scene {
       fontFamily: 'sans-serif',
       fontStyle: 'bold',
     }).setOrigin(0.5);
+    enhanceGameScene(this, 'RhythmGame');
 
     // Score and level
     this.scoreText = this.add.text(width - 20, 30, '得分: 0', {

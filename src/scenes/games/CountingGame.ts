@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { enhanceGameScene } from '../../components/GameExperience';
 import { showStarBurst } from '../../components/Particles';
 
 export class CountingGame extends Phaser.Scene {
@@ -45,6 +46,7 @@ export class CountingGame extends Phaser.Scene {
       fontFamily: 'sans-serif',
       fontStyle: 'bold',
     }).setOrigin(0.5);
+    enhanceGameScene(this, 'CountingGame');
 
     // Score display
     this.scoreText = this.add.text(width - 20, 25, '⭐ 0', {

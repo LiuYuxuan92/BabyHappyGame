@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { enhanceGameScene } from '../../components/GameExperience';
 
 interface FoodItem {
   key: string;
@@ -39,6 +40,7 @@ export class FoodSortGame extends Phaser.Scene {
       fontFamily: 'sans-serif',
       fontStyle: 'bold',
     }).setOrigin(0.5);
+    enhanceGameScene(this, 'FoodSortGame');
 
     this.scoreText = this.add.text(width - 20, 35, '⭐ 0 / 8', {
       fontSize: '22px',

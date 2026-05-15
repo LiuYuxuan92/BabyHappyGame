@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { AudioManager } from '../../components/AudioManager';
+import { enhanceGameScene } from '../../components/GameExperience';
 
 interface PianoKey {
   note: string;
@@ -127,6 +128,7 @@ export class PianoGame extends Phaser.Scene {
       fontFamily: 'sans-serif',
       fontStyle: 'bold',
     }).setOrigin(0.5);
+    enhanceGameScene(this, 'PianoGame');
 
     // Mode indicator
     this.modeText = this.add.text(width / 2, 55, '🎵 自由弹奏', {

@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { enhanceGameScene } from '../../components/GameExperience';
 import { showConfetti, showFireworks } from '../../components/Particles';
 
 export class PuzzleGame extends Phaser.Scene {
@@ -13,10 +14,34 @@ export class PuzzleGame extends Phaser.Scene {
     const { width, height } = this.scale;
     this.placedCount = 0;
 
-    // Background
+    // Forest-like background
     const bg = this.add.graphics();
-    bg.fillGradientStyle(0xE8F5E9, 0xE8F5E9, 0xC8E6C9, 0xC8E6C9);
+    bg.fillGradientStyle(0xE8F5E9, 0xC8E6C9, 0xA5D6A7, 0x81C784);
     bg.fillRect(0, 0, width, height);
+
+    // Ground strip
+    const ground = this.add.graphics();
+    ground.fillStyle(0x689F38, 0.5);
+    ground.fillRect(0, height - 30, width, 30);
+    ground.fillStyle(0x7CB342, 0.4);
+    for (let x = 0; x < width; x += 18) {
+      ground.fillEllipse(x + 9, height - 28, 14, 4 + Math.sin(x * 0.06) * 4);
+    }
+
+    // Flowers
+    for (let i = 0; i < 6; i++) {
+      const fx = 30 + (i / 5) * (width - 60);
+      const f = this.add.image(fx, height - 36, `flower_${i % 6}`);
+      f.setScale(0.65);
+      f.setAlpha(0.65);
+    }
+
+    // Clouds
+    for (let i = 0; i < 3; i++) {
+      const cloud = this.add.image(Phaser.Math.Between(40, width - 40), Phaser.Math.Between(8, 40), 'cloud_deco');
+      cloud.setAlpha(0.3);
+      cloud.setScale(Phaser.Math.FloatBetween(0.5, 0.9));
+    }
 
     // Back button
     const backBtn = this.add.image(40, 40, 'btn_back').setInteractive({ useHandCursor: true });
@@ -29,6 +54,7 @@ export class PuzzleGame extends Phaser.Scene {
       fontFamily: 'sans-serif',
       fontStyle: 'bold',
     }).setOrigin(0.5);
+    enhanceGameScene(this, 'PuzzleGame');
 
     this.createPuzzle();
   }
@@ -36,7 +62,6 @@ export class PuzzleGame extends Phaser.Scene {
   private createPuzzle() {
     const { width, height } = this.scale;
 
-    // Pick random animals for the puzzle
     const allAnimals = [
       { key: 'animal_bear', name: '熊' },
       { key: 'animal_cat', name: '猫' },
@@ -63,11 +88,9 @@ export class PuzzleGame extends Phaser.Scene {
     const gridStartX = width / 2 - totalW / 2 + slotSize / 2;
     const gridStartY = height / 2 - totalH / 2 + slotSize / 2 + 20;
 
-    // Pick animals for slots
     const shuffledAnimals = Phaser.Utils.Array.Shuffle([...allAnimals]);
     const selected = shuffledAnimals.slice(0, this.totalPieces);
 
-    // Create target slots (grayed out silhouettes)
     const slots: { x: number; y: number; key: string; name: string }[] = [];
 
     for (let row = 0; row < rows; row++) {
@@ -77,23 +100,27 @@ export class PuzzleGame extends Phaser.Scene {
         const idx = row * cols + col;
         const animal = selected[idx];
 
-        // Slot background
+        // Slot with shadow
+        const slotShadow = this.add.graphics();
+        slotShadow.fillStyle(0x000000, 0.06);
+        slotShadow.fillRoundedRect(x - slotSize / 2 + 2, y - slotSize / 2 + 2, slotSize, slotSize, 12);
+
         const slot = this.add.graphics();
-        slot.fillStyle(0xE0E0E0, 0.6);
+        slot.fillStyle(0xffffff, 0.7);
         slot.fillRoundedRect(x - slotSize / 2, y - slotSize / 2, slotSize, slotSize, 12);
-        slot.lineStyle(2, 0xBDBDBD);
+        slot.lineStyle(2, 0xBDBDBD, 0.5);
         slot.strokeRoundedRect(x - slotSize / 2, y - slotSize / 2, slotSize, slotSize, 12);
 
         // Silhouette hint
         const hint = this.add.image(x, y, animal.key);
-        hint.setDisplaySize(70, 70);
-        hint.setAlpha(0.15);
+        hint.setDisplaySize(78, 78);
+        hint.setAlpha(0.12);
         hint.setTint(0x000000);
 
-        // Name label below slot
+        // Name label
         this.add.text(x, y + slotSize / 2 - 8, animal.name, {
-          fontSize: '14px',
-          color: '#999999',
+          fontSize: '13px',
+          color: '#9E9E9E',
           fontFamily: 'sans-serif',
         }).setOrigin(0.5);
 
@@ -101,11 +128,10 @@ export class PuzzleGame extends Phaser.Scene {
       }
     }
 
-    // Create draggable pieces scattered on left and right sides
+    // Draggable pieces
     const shuffledSlots = Phaser.Utils.Array.Shuffle([...slots]);
 
     shuffledSlots.forEach((slot, i) => {
-      // Place pieces on left or right side
       let startX: number, startY: number;
       if (i < this.totalPieces / 2) {
         startX = Phaser.Math.Between(30, 80);
@@ -116,29 +142,33 @@ export class PuzzleGame extends Phaser.Scene {
       }
 
       const piece = this.add.image(startX, startY, slot.key);
-      piece.setDisplaySize(75, 75);
+      piece.setDisplaySize(88, 88);
       piece.setInteractive({ useHandCursor: true, draggable: true });
       piece.setData('targetX', slot.x);
       piece.setData('targetY', slot.y);
       piece.setData('targetKey', slot.key);
 
-      // Add white background circle behind piece
-      const bg = this.add.graphics();
-      bg.fillStyle(0xffffff, 0.9);
-      bg.fillCircle(startX, startY, 45);
-      bg.lineStyle(2, 0x4CAF50);
-      bg.strokeCircle(startX, startY, 45);
-      piece.setData('bg', bg);
+      // White circular background with shadow
+      const bgG = this.add.graphics();
+      bgG.fillStyle(0x000000, 0.06);
+      bgG.fillEllipse(startX + 2, startY + 2, 86, 86);
+      bgG.fillStyle(0xffffff, 0.9);
+      bgG.fillCircle(startX, startY, 43);
+      bgG.lineStyle(2, 0x66BB6A, 0.6);
+      bgG.strokeCircle(startX, startY, 43);
+      piece.setData('bg', bgG);
 
       piece.on('drag', (_pointer: Phaser.Input.Pointer, dragX: number, dragY: number) => {
         piece.x = dragX;
         piece.y = dragY;
-        const pieceBg = piece.getData('bg') as Phaser.GameObjects.Graphics;
-        pieceBg.clear();
-        pieceBg.fillStyle(0xffffff, 0.9);
-        pieceBg.fillCircle(dragX, dragY, 45);
-        pieceBg.lineStyle(2, 0x4CAF50);
-        pieceBg.strokeCircle(dragX, dragY, 45);
+        const pb = piece.getData('bg') as Phaser.GameObjects.Graphics;
+        pb.clear();
+        pb.fillStyle(0x000000, 0.06);
+        pb.fillEllipse(dragX + 2, dragY + 2, 86, 86);
+        pb.fillStyle(0xffffff, 0.9);
+        pb.fillCircle(dragX, dragY, 43);
+        pb.lineStyle(2, 0x66BB6A, 0.6);
+        pb.strokeCircle(dragX, dragY, 43);
       });
 
       piece.on('dragend', () => {
@@ -148,15 +178,15 @@ export class PuzzleGame extends Phaser.Scene {
 
         if (dist < 60) {
           piece.disableInteractive();
-          const pieceBg = piece.getData('bg') as Phaser.GameObjects.Graphics;
-          pieceBg.destroy();
+          const pb = piece.getData('bg') as Phaser.GameObjects.Graphics;
+          pb.destroy();
 
           this.tweens.add({
             targets: piece,
             x: targetX,
             y: targetY,
-            displayWidth: 85,
-            displayHeight: 85,
+            displayWidth: 95,
+            displayHeight: 95,
             duration: 200,
             ease: 'Back.easeOut',
           });
@@ -167,13 +197,31 @@ export class PuzzleGame extends Phaser.Scene {
           if (this.placedCount >= this.totalPieces) {
             this.time.delayedCall(600, () => this.showComplete());
           }
+        } else {
+          // Snap to original position
+          const pb = piece.getData('bg') as Phaser.GameObjects.Graphics;
+          pb.clear();
+          pb.fillStyle(0x000000, 0.06);
+          pb.fillEllipse(startX + 2, startY + 2, 86, 86);
+          pb.fillStyle(0xffffff, 0.9);
+          pb.fillCircle(startX, startY, 43);
+          pb.lineStyle(2, 0x66BB6A, 0.6);
+          pb.strokeCircle(startX, startY, 43);
+
+          this.tweens.add({
+            targets: piece,
+            x: startX,
+            y: startY,
+            duration: 300,
+            ease: 'Back.easeOut',
+          });
         }
       });
     });
 
-    this.add.text(width / 2, height - 15, '把动物拖到对应的影子位置', {
-      fontSize: '16px',
-      color: '#888888',
+    this.add.text(width / 2, height - 12, '把动物拖到对应的影子位置', {
+      fontSize: '15px',
+      color: '#8D6E63',
       fontFamily: 'sans-serif',
     }).setOrigin(0.5);
   }
@@ -182,7 +230,7 @@ export class PuzzleGame extends Phaser.Scene {
     const star = this.add.image(x, y, 'star_gold').setScale(0);
     this.tweens.add({
       targets: star,
-      scale: 1.2,
+      scale: 1.4,
       alpha: 0,
       duration: 500,
       onComplete: () => star.destroy(),
@@ -192,7 +240,6 @@ export class PuzzleGame extends Phaser.Scene {
   private showComplete() {
     const { width, height } = this.scale;
 
-    // Celebration particles
     showConfetti(this);
     showFireworks(this, width / 2, height / 2 - 50);
 

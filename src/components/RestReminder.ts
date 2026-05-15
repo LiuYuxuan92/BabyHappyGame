@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { getSettings } from '../utils/storage';
 
 /**
  * RestReminder - Tracks total play time and shows a rest reminder after 20 minutes.
@@ -14,6 +15,7 @@ export class RestReminder {
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
+    if (!getSettings().restReminderEnabled) return;
 
     // Check every 30 seconds if it's time to remind
     this.checkTimer = scene.time.addEvent({

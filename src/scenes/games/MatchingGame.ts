@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { enhanceGameScene } from '../../components/GameExperience';
 import { saveStars } from '../../utils/storage';
 import { VoiceFeedback } from '../../components/VoiceFeedback';
 import { AudioManager } from '../../components/AudioManager';
@@ -30,7 +31,6 @@ export class MatchingGame extends Phaser.Scene {
     this.audio = AudioManager.getInstance();
     this.audio.init(this);
 
-    // Fade in transition
     SceneTransition.fadeIn(this);
 
     const { width, height } = this.scale;
@@ -41,10 +41,34 @@ export class MatchingGame extends Phaser.Scene {
     this.matchedPairs = 0;
     this.moves = 0;
 
-    // Background
+    // Background - nice purple-blue gradient
     const bg = this.add.graphics();
-    bg.fillGradientStyle(0xE3F2FD, 0xE3F2FD, 0xBBDEFB, 0xBBDEFB);
+    bg.fillGradientStyle(0xE8EAF6, 0xE3F2FD, 0xC5CAE9, 0xBBDEFB);
     bg.fillRect(0, 0, width, height);
+
+    // Ground strip
+    const ground = this.add.graphics();
+    ground.fillStyle(0x81C784, 0.5);
+    ground.fillRect(0, height - 30, width, 30);
+    ground.fillStyle(0x66BB6A, 0.4);
+    for (let x = 0; x < width; x += 18) {
+      ground.fillEllipse(x + 9, height - 28, 14, 4 + Math.sin(x * 0.06) * 4);
+    }
+
+    // Flowers
+    for (let i = 0; i < 6; i++) {
+      const fx = 30 + (i / 5) * (width - 60);
+      const f = this.add.image(fx, height - 36, `flower_${i % 6}`);
+      f.setScale(0.6);
+      f.setAlpha(0.6);
+    }
+
+    // Clouds
+    for (let i = 0; i < 3; i++) {
+      const cloud = this.add.image(Phaser.Math.Between(40, width - 40), Phaser.Math.Between(8, 40), 'cloud_deco');
+      cloud.setAlpha(0.3);
+      cloud.setScale(Phaser.Math.FloatBetween(0.5, 0.9));
+    }
 
     // Back button
     const backBtn = this.add.image(40, 40, 'btn_back').setInteractive({ useHandCursor: true });
@@ -57,6 +81,7 @@ export class MatchingGame extends Phaser.Scene {
       fontFamily: 'sans-serif',
       fontStyle: 'bold',
     }).setOrigin(0.5);
+    enhanceGameScene(this, 'MatchingGame');
 
     this.movesText = this.add.text(width - 20, 35, '翻牌: 0', {
       fontSize: '22px',
@@ -82,7 +107,6 @@ export class MatchingGame extends Phaser.Scene {
     const startX = (width - totalW) / 2 + cardW / 2;
     const startY = (height - totalH) / 2 + cardH / 2 + 30;
 
-    // Pick random images for pairs
     const allImages = [
       'animal_bear', 'animal_cat', 'animal_cow', 'animal_dog',
       'animal_elephant', 'animal_giraffe', 'animal_monkey', 'animal_penguin',
@@ -101,36 +125,44 @@ export class MatchingGame extends Phaser.Scene {
     for (let row = 0; row < rows; row++) {
       for (let col = 0; col < cols; col++) {
         const x = startX + col * (cardW + gap);
-        const y = startY + row * (cardH + gap);
+        const y = startY + row * (cardH + gap) + cardH / 2;
         const imageKey = pairImages[index];
 
         const container = this.add.container(x, y);
 
-        // Card back
+        // Card shadow
+        const shadow = this.add.graphics();
+        shadow.fillStyle(0x000000, 0.08);
+        shadow.fillRoundedRect(-cardW / 2 + 3, -cardH / 2 + 3, cardW, cardH, 14);
+
+        // Card back - more attractive pattern
         const back = this.add.graphics();
         back.fillStyle(0x5C6BC0);
         back.fillRoundedRect(-cardW / 2, -cardH / 2, cardW, cardH, 14);
+        back.fillStyle(0x7986CB, 0.4);
+        back.fillRoundedRect(-cardW / 2 + 8, -cardH / 2 + 8, cardW - 16, cardH - 16, 10);
         back.lineStyle(3, 0x3949AB);
         back.strokeRoundedRect(-cardW / 2, -cardH / 2, cardW, cardH, 14);
 
-        const qMark = this.add.text(0, 0, '❓', {
-          fontSize: '36px',
-        }).setOrigin(0.5);
+        // Star decoration on card back
+        const starOnBack = this.add.image(0, 0, 'star_gold');
+        starOnBack.setScale(0.6);
+        starOnBack.setAlpha(0.5);
 
-        // Card front
+        // Card front - white with green border
         const front = this.add.graphics();
         front.fillStyle(0xffffff);
         front.fillRoundedRect(-cardW / 2, -cardH / 2, cardW, cardH, 14);
-        front.lineStyle(3, 0x4CAF50);
+        front.lineStyle(3, 0x4CAF50, 0.8);
         front.strokeRoundedRect(-cardW / 2, -cardH / 2, cardW, cardH, 14);
 
         const img = this.add.image(0, 0, imageKey);
-        img.setDisplaySize(80, 80);
+        img.setDisplaySize(90, 90);
 
         front.setVisible(false);
         img.setVisible(false);
 
-        container.add([front, img, back, qMark]);
+        container.add([shadow, front, img, back, starOnBack]);
 
         const hitArea = this.add.rectangle(0, 0, cardW, cardH, 0xffffff, 0);
         hitArea.setInteractive({ useHandCursor: true });
@@ -139,23 +171,19 @@ export class MatchingGame extends Phaser.Scene {
         const card: Card = { sprite: container, imageKey, revealed: false, matched: false };
         this.cards.push(card);
 
-        hitArea.on('pointerdown', () => this.flipCard(card, back, qMark, front, img));
+        hitArea.on('pointerdown', () => this.flipCard(card, back, starOnBack, front, img));
 
         index++;
       }
     }
 
-    this.add.text(width / 2, height - 20, '翻开两张相同动物的卡片', {
-      fontSize: '16px',
-      color: '#888888',
-      fontFamily: 'sans-serif',
-    }).setOrigin(0.5);
+    this.addInstruction(width, height);
   }
 
   private flipCard(
     card: Card,
     back: Phaser.GameObjects.Graphics,
-    qMark: Phaser.GameObjects.Text,
+    starOnBack: Phaser.GameObjects.Image,
     front: Phaser.GameObjects.Graphics,
     img: Phaser.GameObjects.Image
   ) {
@@ -169,7 +197,7 @@ export class MatchingGame extends Phaser.Scene {
       duration: 100,
       onComplete: () => {
         back.setVisible(false);
-        qMark.setVisible(false);
+        starOnBack.setVisible(false);
         front.setVisible(true);
         img.setVisible(true);
         this.tweens.add({
@@ -207,7 +235,7 @@ export class MatchingGame extends Phaser.Scene {
     [this.firstCard!, this.secondCard!].forEach(card => {
       this.tweens.add({
         targets: card.sprite,
-        scale: 1.1,
+        scale: 1.15,
         duration: 200,
         yoyo: true,
       });
@@ -254,10 +282,10 @@ export class MatchingGame extends Phaser.Scene {
         duration: 100,
         onComplete: () => {
           const children = card.sprite.list as Phaser.GameObjects.GameObject[];
-          (children[0] as Phaser.GameObjects.Graphics).setVisible(false);
-          (children[1] as Phaser.GameObjects.Image).setVisible(false);
-          (children[2] as Phaser.GameObjects.Graphics).setVisible(true);
-          (children[3] as Phaser.GameObjects.Text).setVisible(true);
+          (children[1] as Phaser.GameObjects.Graphics).setVisible(false);
+          (children[2] as Phaser.GameObjects.Image).setVisible(false);
+          (children[3] as Phaser.GameObjects.Graphics).setVisible(true);
+          (children[4] as Phaser.GameObjects.Image).setVisible(true);
           this.tweens.add({
             targets: card.sprite,
             scaleX: 1,
@@ -319,5 +347,13 @@ export class MatchingGame extends Phaser.Scene {
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
     nextBtn.on('pointerdown', () => this.scene.restart());
+  }
+
+  private addInstruction(width: number, height: number) {
+    this.add.text(width / 2, height - 12, '翻开两张相同动物的卡片', {
+      fontSize: '15px',
+      color: '#8D6E63',
+      fontFamily: 'sans-serif',
+    }).setOrigin(0.5);
   }
 }

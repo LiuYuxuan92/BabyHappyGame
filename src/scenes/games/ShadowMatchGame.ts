@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { enhanceGameScene } from '../../components/GameExperience';
 
 interface AnimalPair {
   key: string;
@@ -40,6 +41,7 @@ export class ShadowMatchGame extends Phaser.Scene {
       fontFamily: 'sans-serif',
       fontStyle: 'bold',
     }).setOrigin(0.5);
+    enhanceGameScene(this, 'ShadowMatchGame');
 
     // Status text
     this.statusText = this.add.text(width / 2, 70, '', {

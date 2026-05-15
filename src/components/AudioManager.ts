@@ -1,3 +1,5 @@
+import { getSettings } from '../utils/storage';
+
 /**
  * AudioManager - Generates sound effects programmatically using Web Audio API.
  * Singleton pattern for use across all game scenes.
@@ -18,6 +20,7 @@ export class AudioManager {
 
   /** Initialize with a Phaser scene's audio context or create a new one */
   init(scene?: Phaser.Scene): void {
+    this.syncWithSettings();
     if (this.context) return;
     if (scene && scene.sound && (scene.sound as any).context) {
       this.context = (scene.sound as any).context as AudioContext;
@@ -34,9 +37,14 @@ export class AudioManager {
     this._muted = value;
   }
 
+  syncWithSettings(): void {
+    this._muted = !getSettings().soundEnabled;
+  }
+
   /** Short click sound - 800Hz for 50ms */
   playTap(): void {
     if (this._muted || !this.ensureContext()) return;
+    this.vibrate(8);
     const ctx = this.context!;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -55,6 +63,7 @@ export class AudioManager {
   /** Soft whoosh - 400Hz frequency sweep for drag */
   playDrag(): void {
     if (this._muted || !this.ensureContext()) return;
+    this.vibrate(5);
     const ctx = this.context!;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -74,6 +83,7 @@ export class AudioManager {
   /** Happy ascending C-E-G arpeggio, 200ms each note */
   playSuccess(): void {
     if (this._muted || !this.ensureContext()) return;
+    this.vibrate(18);
     const ctx = this.context!;
     const notes = [261.63, 329.63, 392.0]; // C4, E4, G4
 
@@ -98,6 +108,7 @@ export class AudioManager {
   /** Low buzz for wrong answer - 200Hz for 200ms */
   playWrong(): void {
     if (this._muted || !this.ensureContext()) return;
+    this.vibrate([20, 20, 20]);
     const ctx = this.context!;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -116,6 +127,7 @@ export class AudioManager {
   /** Fanfare: C-E-G-C ascending, 150ms each note */
   playComplete(): void {
     if (this._muted || !this.ensureContext()) return;
+    this.vibrate([30, 20, 30]);
     const ctx = this.context!;
     const notes = [261.63, 329.63, 392.0, 523.25]; // C4, E4, G4, C5
 
@@ -146,5 +158,13 @@ export class AudioManager {
       this.context.resume();
     }
     return true;
+  }
+
+  private vibrate(pattern: number | number[]): void {
+    try {
+      navigator.vibrate?.(pattern);
+    } catch {
+      // Vibration is optional.
+    }
   }
 }

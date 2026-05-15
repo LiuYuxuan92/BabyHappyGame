@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { enhanceGameScene } from '../../components/GameExperience';
 
 interface SortableItem {
   sprite: Phaser.GameObjects.Image;
@@ -44,6 +45,7 @@ export class SizeSortGame extends Phaser.Scene {
       fontFamily: 'sans-serif',
       fontStyle: 'bold',
     }).setOrigin(0.5);
+    enhanceGameScene(this, 'SizeSortGame');
 
     // Level display
     this.levelText = this.add.text(width - 20, 25, `第 ${this.level} 关`, {

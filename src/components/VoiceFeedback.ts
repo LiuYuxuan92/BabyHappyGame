@@ -1,3 +1,5 @@
+import { getSettings } from '../utils/storage';
+
 const correctPhrases = ['真棒!', '答对了!', '好聪明!', '太厉害了!'];
 const wrongPhrases = ['再试试!', '加油!', '没关系!'];
 
@@ -20,7 +22,12 @@ class VoiceFeedbackManager {
     }
   }
 
+  syncWithSettings(): void {
+    this.muted = !getSettings().voiceEnabled;
+  }
+
   speak(text: string, lang = 'zh-CN'): void {
+    this.syncWithSettings();
     if (this._muted || !this.supported) return;
 
     try {

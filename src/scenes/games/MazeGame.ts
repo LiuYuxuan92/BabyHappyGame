@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { enhanceGameScene } from '../../components/GameExperience';
 
 interface Cell {
   row: number;
@@ -52,6 +53,7 @@ export class MazeGame extends Phaser.Scene {
       fontFamily: 'sans-serif',
       fontStyle: 'bold',
     }).setOrigin(0.5);
+    enhanceGameScene(this, 'MazeGame');
 
     // Level indicator
     this.add.text(width - 20, 35, `第${this.level}关`, {
