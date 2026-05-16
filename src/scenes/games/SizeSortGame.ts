@@ -1,479 +1,511 @@
 import Phaser from 'phaser';
-import { enhanceGameScene, recordGameComplete } from '../../components/GameExperience';
+import { AudioManager } from '../../components/AudioManager';
+import { enhanceGameScene, recordGameComplete, showFloatingToast } from '../../components/GameExperience';
+import { showStarBurst } from '../../components/Particles';
 
-interface SortableItem {
-  sprite: Phaser.GameObjects.Image;
-  originalScale: number;
-  correctSlot: number;
-  currentSlot: number | null;
+interface SizeLevel {
+  title: string;
+  prompt: string;
+  itemKey: string;
+  itemName: string;
+  count: number;
+  minScale: number;
+  maxScale: number;
+  accent: number;
+  bg: 'garden' | 'ocean' | 'city';
 }
 
-export class SizeSortGame extends Phaser.Scene {
-  private items: SortableItem[] = [];
-  private slots: { x: number; y: number; occupied: boolean; index: number }[] = [];
-  private level = 1;
-  private itemCount = 3;
-  private scoreText!: Phaser.GameObjects.Text;
-  private levelText!: Phaser.GameObjects.Text;
-  private dragStartX = 0;
-  private dragStartY = 0;
+interface Slot {
+  x: number;
+  y: number;
+  index: number;
+  occupiedBy: SizeItem | null;
+  frame: Phaser.GameObjects.Graphics;
+}
 
-  private readonly animalKey = 'animal_elephant';
+interface SizeItem {
+  sprite: Phaser.GameObjects.Image;
+  plate: Phaser.GameObjects.Graphics;
+  correctSlot: number;
+  currentSlot: number | null;
+  originalX: number;
+  originalY: number;
+  scaleValue: number;
+}
+
+const LEVELS: SizeLevel[] = [
+  {
+    title: '小象排队',
+    prompt: '从小到大排 3 个',
+    itemKey: 'animal_elephant',
+    itemName: '小象',
+    count: 3,
+    minScale: 0.52,
+    maxScale: 0.95,
+    accent: 0xE91E63,
+    bg: 'garden',
+  },
+  {
+    title: '小鱼长大',
+    prompt: '按大小排 4 条鱼',
+    itemKey: 'fish_orange',
+    itemName: '小鱼',
+    count: 4,
+    minScale: 0.48,
+    maxScale: 1.02,
+    accent: 0x03A9F4,
+    bg: 'ocean',
+  },
+  {
+    title: '车队出发',
+    prompt: '挑战 5 辆车',
+    itemKey: 'vehicle_red',
+    itemName: '小车',
+    count: 5,
+    minScale: 0.42,
+    maxScale: 1.08,
+    accent: 0xFF7043,
+    bg: 'city',
+  },
+];
+
+export class SizeSortGame extends Phaser.Scene {
+  private items: SizeItem[] = [];
+  private slots: Slot[] = [];
+  private levelIndex = 0;
+  private wrongOrders = 0;
+  private hintsUsed = 0;
+  private statusText!: Phaser.GameObjects.Text;
+  private audio!: AudioManager;
 
   constructor() {
     super({ key: 'SizeSortGame' });
   }
 
+  init(data?: { levelIndex?: number; wrongOrders?: number; hintsUsed?: number }) {
+    this.levelIndex = data?.levelIndex ?? 0;
+    this.wrongOrders = data?.wrongOrders ?? 0;
+    this.hintsUsed = data?.hintsUsed ?? 0;
+  }
+
   create() {
-    const { width, height } = this.scale;
+    this.audio = AudioManager.getInstance();
+    this.audio.init(this);
     this.items = [];
     this.slots = [];
 
-    // Gradient background
-    const bg = this.add.graphics();
-    bg.fillGradientStyle(0xFCE4EC, 0xFCE4EC, 0xF8BBD0, 0xF8BBD0);
-    bg.fillRect(0, 0, width, height);
+    const { width } = this.scale;
+    const level = LEVELS[this.levelIndex];
+    this.drawBackground(level);
 
-    // Back button
     const backBtn = this.add.image(40, 40, 'btn_back').setInteractive({ useHandCursor: true });
-    backBtn.on('pointerdown', () => this.scene.start('MenuScene'));
+    backBtn.on('pointerdown', () => {
+      this.audio.playTap();
+      this.scene.start('MenuScene');
+    });
 
-    // Title
-    this.add.text(width / 2, 35, '📏 大小排序', {
-      fontSize: '32px',
-      color: '#333333',
+    this.add.text(width / 2, 34, '大小排队乐园', {
+      fontSize: '34px',
+      color: '#263238',
       fontFamily: 'sans-serif',
       fontStyle: 'bold',
+      stroke: '#ffffff',
+      strokeThickness: 5,
     }).setOrigin(0.5);
     enhanceGameScene(this, 'SizeSortGame');
 
-    // Level display
-    this.levelText = this.add.text(width - 20, 25, `第 ${this.level} 关`, {
-      fontSize: '22px',
-      color: '#E91E63',
+    this.add.text(width / 2, 70, `${this.levelIndex + 1}/${LEVELS.length}  ${level.title} · ${level.prompt}`, {
+      fontSize: '20px',
+      color: '#546E7A',
       fontFamily: 'sans-serif',
       fontStyle: 'bold',
-    }).setOrigin(1, 0.5);
-
-    // Score/progress
-    this.scoreText = this.add.text(width - 20, 55, `${this.itemCount} 个物品`, {
-      fontSize: '18px',
-      color: '#666666',
-      fontFamily: 'sans-serif',
-    }).setOrigin(1, 0.5);
-
-    // Instruction
-    this.add.text(width / 2, 75, '把动物从小到大排列（左到右）', {
-      fontSize: '18px',
-      color: '#777777',
-      fontFamily: 'sans-serif',
     }).setOrigin(0.5);
 
-    // Determine item count based on level
-    this.itemCount = Math.min(3 + this.level - 1, 5);
-    this.scoreText.setText(`${this.itemCount} 个物品`);
+    this.statusText = this.add.text(width - 24, 34, '', {
+      fontSize: '19px',
+      color: '#455A64',
+      fontFamily: 'sans-serif',
+      fontStyle: 'bold',
+      backgroundColor: '#ffffffdd',
+      padding: { x: 12, y: 7 },
+    }).setOrigin(1, 0.5);
 
-    this.createSlots();
-    this.createItems();
+    const hintBtn = this.add.text(width - 24, 72, '提示', {
+      fontSize: '18px',
+      color: '#ffffff',
+      fontFamily: 'sans-serif',
+      fontStyle: 'bold',
+      backgroundColor: '#26A69A',
+      padding: { x: 16, y: 8 },
+    }).setOrigin(1, 0.5).setInteractive({ useHandCursor: true });
+    hintBtn.on('pointerdown', () => this.showHint());
+
+    this.createSlots(level);
+    this.createItems(level);
     this.setupDrag();
-
-    // Bottom instruction
-    this.add.text(width / 2, height - 20, '拖动动物到下方格子里，从小到大排列', {
-      fontSize: '16px',
-      color: '#888888',
-      fontFamily: 'sans-serif',
-    }).setOrigin(0.5);
+    this.updateStatus();
   }
 
-  private createSlots() {
+  private drawBackground(level: SizeLevel) {
     const { width, height } = this.scale;
-    const slotSize = 110;
-    const gap = 16;
-    const totalW = this.itemCount * slotSize + (this.itemCount - 1) * gap;
-    const startX = (width - totalW) / 2 + slotSize / 2;
-    const slotY = height - 130;
+    const bg = this.add.graphics();
+    if (level.bg === 'ocean') {
+      bg.fillGradientStyle(0xD9F7FF, 0xB2EBF2, 0xE0F7FA, 0x80DEEA);
+    } else if (level.bg === 'city') {
+      bg.fillGradientStyle(0xFFF8E1, 0xE1F5FE, 0xF3E5F5, 0xCFD8DC);
+    } else {
+      bg.fillGradientStyle(0xFCE4EC, 0xE3F2FD, 0xFFFDE7, 0xC8E6C9);
+    }
+    bg.fillRect(0, 0, width, height);
+    bg.fillStyle(0xffffff, 0.34);
+    bg.fillRoundedRect(72, 104, width - 144, height - 250, 34);
+    bg.lineStyle(4, 0xffffff, 0.42);
+    bg.strokeRoundedRect(72, 104, width - 144, height - 250, 34);
 
-    for (let i = 0; i < this.itemCount; i++) {
+    if (level.bg === 'ocean') {
+      for (let i = 0; i < 14; i++) {
+        const bubble = this.add.circle(72 + i * 58, 126 + (i % 5) * 66, 6 + (i % 3) * 4, 0xffffff, 0.22);
+        this.tweens.add({ targets: bubble, y: bubble.y - 20, alpha: 0.08, duration: 1200 + i * 80, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      }
+    } else if (level.bg === 'city') {
+      bg.fillStyle(0x90A4AE, 0.22);
+      for (let x = 70; x < width; x += 96) {
+        bg.fillRoundedRect(x, height - 126, 54, 76 + (x % 3) * 12, 8);
+      }
+    } else {
+      for (let i = 0; i < 7; i++) {
+        const flower = this.add.image(66 + i * 182, height - 34, `flower_${i % 6}`).setScale(0.66).setAlpha(0.6);
+        this.tweens.add({ targets: flower, y: flower.y - 4, duration: 900 + i * 80, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      }
+    }
+  }
+
+  private createSlots(level: SizeLevel) {
+    const { width, height } = this.scale;
+    const slotSize = level.count >= 5 ? 96 : 112;
+    const gap = level.count >= 5 ? 12 : 18;
+    const totalW = level.count * slotSize + (level.count - 1) * gap;
+    const startX = width / 2 - totalW / 2 + slotSize / 2;
+    const y = height - 112;
+
+    this.add.text(width / 2, y - 86, '从小到大', {
+      fontSize: '23px',
+      color: '#455A64',
+      fontFamily: 'sans-serif',
+      fontStyle: 'bold',
+      backgroundColor: '#ffffffcc',
+      padding: { x: 18, y: 8 },
+    }).setOrigin(0.5);
+
+    for (let i = 0; i < level.count; i++) {
       const x = startX + i * (slotSize + gap);
+      const frame = this.add.graphics();
+      this.drawSlotFrame(frame, x, y, slotSize, level.accent, false);
 
-      // Slot visual
-      const slotGfx = this.add.graphics();
-      slotGfx.fillStyle(0xFFFFFF, 0.7);
-      slotGfx.fillRoundedRect(x - slotSize / 2, slotY - slotSize / 2, slotSize, slotSize, 14);
-      slotGfx.lineStyle(3, 0xE91E63, 0.6);
-      slotGfx.strokeRoundedRect(x - slotSize / 2, slotY - slotSize / 2, slotSize, slotSize, 14);
-
-      // Slot number label
-      this.add.text(x, slotY + slotSize / 2 + 14, `${i + 1}`, {
-        fontSize: '20px',
-        color: '#E91E63',
+      const label = i === 0 ? '小' : i === level.count - 1 ? '大' : String(i + 1);
+      this.add.text(x, y + slotSize / 2 + 17, label, {
+        fontSize: '19px',
+        color: '#607D8B',
         fontFamily: 'sans-serif',
         fontStyle: 'bold',
       }).setOrigin(0.5);
 
-      // Size hint: small arrow to large
-      if (i === 0) {
-        this.add.text(x, slotY - slotSize / 2 - 14, '小', {
-          fontSize: '16px',
-          color: '#999999',
-          fontFamily: 'sans-serif',
-        }).setOrigin(0.5);
-      } else if (i === this.itemCount - 1) {
-        this.add.text(x, slotY - slotSize / 2 - 14, '大', {
-          fontSize: '16px',
-          color: '#999999',
-          fontFamily: 'sans-serif',
-        }).setOrigin(0.5);
-      }
-
-      this.slots.push({ x, y: slotY, occupied: false, index: i });
+      this.slots.push({ x, y, index: i, occupiedBy: null, frame });
     }
+
+    const arrow = this.add.graphics();
+    arrow.lineStyle(4, level.accent, 0.55);
+    arrow.lineBetween(startX - 44, y - 70, startX + (level.count - 1) * (slotSize + gap) + 44, y - 70);
+    arrow.fillStyle(level.accent, 0.55);
+    arrow.fillTriangle(startX + (level.count - 1) * (slotSize + gap) + 54, y - 70, startX + (level.count - 1) * (slotSize + gap) + 34, y - 82, startX + (level.count - 1) * (slotSize + gap) + 34, y - 58);
   }
 
-  private createItems() {
+  private drawSlotFrame(g: Phaser.GameObjects.Graphics, x: number, y: number, size: number, color: number, active: boolean) {
+    g.clear();
+    g.fillStyle(0xffffff, active ? 0.98 : 0.78);
+    g.fillRoundedRect(x - size / 2, y - size / 2, size, size, 18);
+    g.lineStyle(active ? 6 : 4, color, active ? 0.85 : 0.55);
+    g.strokeRoundedRect(x - size / 2, y - size / 2, size, size, 18);
+    g.fillStyle(color, active ? 0.18 : 0.08);
+    g.fillCircle(x, y, size * 0.27);
+  }
+
+  private createItems(level: SizeLevel) {
     const { width, height } = this.scale;
+    const scaleStep = (level.maxScale - level.minScale) / (level.count - 1);
+    const sizes = Array.from({ length: level.count }, (_v, i) => level.minScale + i * scaleStep);
+    const shuffled = Phaser.Utils.Array.Shuffle(sizes.map((scale, index) => ({ scale, index })));
+    const positions = this.generatePositions(level.count, 110, width - 110, 142, height - 252, 112);
 
-    // Generate scales from small to large
-    const minScale = 0.4;
-    const maxScale = 1.2;
-    const scaleStep = (maxScale - minScale) / (this.itemCount - 1);
+    shuffled.forEach((entry, displayIndex) => {
+      const pos = positions[displayIndex];
+      const plate = this.add.graphics().setPosition(pos.x, pos.y);
+      plate.fillStyle(0xffffff, 0.62);
+      plate.fillCircle(0, 10, 50);
+      plate.lineStyle(2, 0xffffff, 0.8);
+      plate.strokeCircle(0, 10, 50);
 
-    const scales: number[] = [];
-    for (let i = 0; i < this.itemCount; i++) {
-      scales.push(minScale + i * scaleStep);
-    }
-
-    // Shuffle for display
-    const shuffledScales = Phaser.Utils.Array.Shuffle([...scales]);
-
-    // Place items in the upper play area
-    const playAreaTop = 110;
-    const playAreaBottom = height - 260;
-    const playAreaLeft = 100;
-    const playAreaRight = width - 100;
-
-    const positions = this.generatePositions(
-      this.itemCount,
-      playAreaLeft,
-      playAreaRight,
-      playAreaTop,
-      playAreaBottom,
-      120
-    );
-
-    shuffledScales.forEach((scale, i) => {
-      const pos = positions[i];
-      const sprite = this.add.image(pos.x, pos.y, this.animalKey);
-      sprite.setScale(scale * 0.7); // Adjust base size
+      const sprite = this.add.image(pos.x, pos.y, level.itemKey);
+      sprite.setScale(entry.scale);
       sprite.setInteractive({ useHandCursor: true, draggable: true });
-
-      // Determine correct slot (sorted index based on scale)
-      const sortedIndex = scales.indexOf(scale);
-
-      sprite.setData('itemIndex', i);
       sprite.setData('originalX', pos.x);
       sprite.setData('originalY', pos.y);
+      sprite.setData('plate', plate);
 
-      const item: SortableItem = {
+      const item: SizeItem = {
         sprite,
-        originalScale: scale,
-        correctSlot: sortedIndex,
+        plate,
+        correctSlot: entry.index,
         currentSlot: null,
+        originalX: pos.x,
+        originalY: pos.y,
+        scaleValue: entry.scale,
       };
-
       this.items.push(item);
 
-      // Entrance animation
-      sprite.setAlpha(0);
-      this.tweens.add({
-        targets: sprite,
-        alpha: 1,
-        y: pos.y,
-        duration: 400,
-        delay: i * 120,
-        ease: 'Back.easeOut',
-      });
+      sprite.setAlpha(0).setY(pos.y + 18);
+      plate.setAlpha(0);
+      this.tweens.add({ targets: [sprite, plate], alpha: 1, y: pos.y, duration: 280, delay: displayIndex * 75, ease: 'Back.easeOut' });
     });
   }
 
-  private generatePositions(
-    count: number,
-    left: number,
-    right: number,
-    top: number,
-    bottom: number,
-    minDist: number
-  ): { x: number; y: number }[] {
+  private generatePositions(count: number, left: number, right: number, top: number, bottom: number, minDist: number): { x: number; y: number }[] {
     const positions: { x: number; y: number }[] = [];
     let attempts = 0;
-
-    while (positions.length < count && attempts < 500) {
+    while (positions.length < count && attempts < 700) {
       const x = Phaser.Math.Between(left, right);
       const y = Phaser.Math.Between(top, bottom);
-      let valid = true;
-
-      for (const pos of positions) {
-        if (Phaser.Math.Distance.Between(x, y, pos.x, pos.y) < minDist) {
-          valid = false;
-          break;
-        }
-      }
-
-      if (valid) {
+      if (positions.every(pos => Phaser.Math.Distance.Between(x, y, pos.x, pos.y) >= minDist)) {
         positions.push({ x, y });
       }
       attempts++;
     }
 
-    // Fallback grid
-    if (positions.length < count) {
-      positions.length = 0;
-      const spacing = (right - left) / (count + 1);
-      const midY = (top + bottom) / 2;
-      for (let i = 0; i < count; i++) {
-        positions.push({
-          x: left + spacing * (i + 1),
-          y: midY + Phaser.Math.Between(-30, 30),
-        });
-      }
+    if (positions.length === count) return positions;
+    positions.length = 0;
+    const spacing = (right - left) / (count + 1);
+    const midY = (top + bottom) / 2;
+    for (let i = 0; i < count; i++) {
+      positions.push({ x: left + spacing * (i + 1), y: midY + Phaser.Math.Between(-26, 26) });
     }
-
     return positions;
   }
 
   private setupDrag() {
     this.input.on('dragstart', (_pointer: Phaser.Input.Pointer, obj: Phaser.GameObjects.Image) => {
-      this.dragStartX = obj.x;
-      this.dragStartY = obj.y;
-      obj.setDepth(10);
-
-      // Scale up slightly when picked up
-      this.tweens.add({
-        targets: obj,
-        scaleX: obj.scaleX * 1.1,
-        scaleY: obj.scaleY * 1.1,
-        duration: 100,
-      });
-
-      // Free up the slot this item was in
-      const item = this.items.find(it => it.sprite === obj);
-      if (item && item.currentSlot !== null) {
-        this.slots[item.currentSlot].occupied = false;
-        item.currentSlot = null;
-      }
+      const item = this.items.find(candidate => candidate.sprite === obj);
+      if (!item) return;
+      this.audio.playDrag();
+      obj.setDepth(20);
+      item.plate.setDepth(19);
+      this.releaseCurrentSlot(item);
+      this.tweens.add({ targets: obj, scale: item.scaleValue * 1.08, duration: 100 });
     });
 
     this.input.on('drag', (_pointer: Phaser.Input.Pointer, obj: Phaser.GameObjects.Image, dragX: number, dragY: number) => {
-      obj.x = dragX;
-      obj.y = dragY;
+      obj.setPosition(dragX, dragY);
+      const plate = obj.getData('plate') as Phaser.GameObjects.Graphics;
+      plate.setPosition(dragX, dragY);
+      this.highlightNearestSlot(obj);
     });
 
     this.input.on('dragend', (_pointer: Phaser.Input.Pointer, obj: Phaser.GameObjects.Image) => {
-      obj.setDepth(0);
-      const item = this.items.find(it => it.sprite === obj);
+      this.clearSlotHighlights();
+      const item = this.items.find(candidate => candidate.sprite === obj);
       if (!item) return;
+      obj.setDepth(0);
+      item.plate.setDepth(0);
 
-      // Restore scale
-      const targetScale = item.originalScale * 0.7;
-
-      // Check if near a slot
-      let snapped = false;
-      for (const slot of this.slots) {
-        const dist = Phaser.Math.Distance.Between(obj.x, obj.y, slot.x, slot.y);
-        if (dist < 70 && !slot.occupied) {
-          // Snap to slot
-          slot.occupied = true;
-          item.currentSlot = slot.index;
-          snapped = true;
-
-          this.tweens.add({
-            targets: obj,
-            x: slot.x,
-            y: slot.y,
-            scaleX: targetScale,
-            scaleY: targetScale,
-            duration: 200,
-            ease: 'Back.easeOut',
-          });
-          break;
-        }
+      const slot = this.slots.find(candidate => Phaser.Math.Distance.Between(obj.x, obj.y, candidate.x, candidate.y) < 72);
+      if (slot) {
+        this.placeItemInSlot(item, slot);
+      } else {
+        this.returnItemHome(item);
       }
-
-      if (!snapped) {
-        // Return to original position
-        this.tweens.add({
-          targets: obj,
-          x: obj.getData('originalX'),
-          y: obj.getData('originalY'),
-          scaleX: targetScale,
-          scaleY: targetScale,
-          duration: 300,
-          ease: 'Back.easeOut',
-        });
-      }
-
-      // Check if all items are placed
-      this.time.delayedCall(250, () => this.checkCompletion());
+      this.time.delayedCall(260, () => this.checkCompletion());
     });
+  }
+
+  private releaseCurrentSlot(item: SizeItem) {
+    if (item.currentSlot === null) return;
+    const slot = this.slots[item.currentSlot];
+    slot.occupiedBy = null;
+    item.currentSlot = null;
+  }
+
+  private placeItemInSlot(item: SizeItem, slot: Slot) {
+    if (slot.occupiedBy && slot.occupiedBy !== item) {
+      this.returnItemHome(slot.occupiedBy);
+      slot.occupiedBy.currentSlot = null;
+    }
+    slot.occupiedBy = item;
+    item.currentSlot = slot.index;
+    this.audio.playTap();
+    this.tweens.add({
+      targets: [item.sprite, item.plate],
+      x: slot.x,
+      y: slot.y,
+      duration: 210,
+      ease: 'Back.easeOut',
+    });
+    this.tweens.add({ targets: item.sprite, scale: item.scaleValue, duration: 120 });
+  }
+
+  private returnItemHome(item: SizeItem) {
+    this.releaseCurrentSlot(item);
+    this.tweens.add({
+      targets: [item.sprite, item.plate],
+      x: item.originalX,
+      y: item.originalY,
+      duration: 280,
+      ease: 'Back.easeOut',
+    });
+    this.tweens.add({ targets: item.sprite, scale: item.scaleValue, duration: 120 });
+  }
+
+  private highlightNearestSlot(obj: Phaser.GameObjects.Image) {
+    this.clearSlotHighlights();
+    const level = LEVELS[this.levelIndex];
+    const slotSize = level.count >= 5 ? 96 : 112;
+    const slot = this.slots.find(candidate => Phaser.Math.Distance.Between(obj.x, obj.y, candidate.x, candidate.y) < 92);
+    if (slot) {
+      this.drawSlotFrame(slot.frame, slot.x, slot.y, slotSize, level.accent, true);
+    }
+  }
+
+  private clearSlotHighlights() {
+    const level = LEVELS[this.levelIndex];
+    const slotSize = level.count >= 5 ? 96 : 112;
+    this.slots.forEach(slot => this.drawSlotFrame(slot.frame, slot.x, slot.y, slotSize, level.accent, false));
   }
 
   private checkCompletion() {
-    // Check if all slots are filled
-    const allPlaced = this.items.every(item => item.currentSlot !== null);
-    if (!allPlaced) return;
-
-    // Check if order is correct
-    const isCorrect = this.items.every(item => item.currentSlot === item.correctSlot);
-
-    if (isCorrect) {
-      this.showSuccess();
-    } else {
-      this.showTryAgain();
+    if (!this.items.every(item => item.currentSlot !== null)) return;
+    const correct = this.items.every(item => item.currentSlot === item.correctSlot);
+    if (correct) {
+      this.finishLevel();
+      return;
     }
+
+    this.wrongOrders++;
+    this.audio.playWrong();
+    this.cameras.main.shake(180, 0.002);
+    showFloatingToast(this, '顺序还不对，看看谁更小', 0xFFB300);
+    this.items.forEach((item, index) => {
+      this.tweens.add({ targets: item.sprite, x: item.sprite.x - 7, duration: 45, yoyo: true, repeat: 3, delay: index * 20 });
+    });
+    this.updateStatus();
   }
 
-  private showSuccess() {
-    const { width, height } = this.scale;
+  private showHint() {
+    const level = LEVELS[this.levelIndex];
+    this.hintsUsed++;
+    this.audio.playTap();
+    showFloatingToast(this, '数字越小越靠左', 0x26A69A);
 
-    // Disable all dragging
-    this.items.forEach(item => item.sprite.disableInteractive());
-
-    // Celebrate each item
-    this.items.forEach((item, i) => {
-      this.time.delayedCall(i * 150, () => {
-        this.tweens.add({
-          targets: item.sprite,
-          y: item.sprite.y - 20,
-          duration: 200,
-          yoyo: true,
-          ease: 'Sine.easeOut',
-        });
-
-        const star = this.add.image(item.sprite.x, item.sprite.y - 40, 'star_gold').setScale(0);
-        this.tweens.add({
-          targets: star,
-          scale: 1,
-          alpha: 0,
-          y: star.y - 40,
-          duration: 600,
-          onComplete: () => star.destroy(),
-        });
-      });
-    });
-
-    // Show completion after celebration
-    this.time.delayedCall(this.itemCount * 150 + 600, () => {
-      this.showLevelComplete();
-    });
-  }
-
-  private showTryAgain() {
-    const { width, height } = this.scale;
-
-    // Shake all items gently
     this.items.forEach(item => {
+      const badge = this.add.container(item.sprite.x + 30, item.sprite.y - 32).setDepth(30);
+      const dot = this.add.circle(0, 0, 17, 0xffffff, 0.96);
+      dot.setStrokeStyle(3, level.accent, 0.85);
+      const label = this.add.text(0, 0, String(item.correctSlot + 1), {
+        fontSize: '18px',
+        color: '#263238',
+        fontFamily: 'sans-serif',
+        fontStyle: 'bold',
+      }).setOrigin(0.5);
+      badge.add([dot, label]);
+      badge.setScale(0);
       this.tweens.add({
-        targets: item.sprite,
-        x: item.sprite.x - 5,
-        duration: 50,
-        yoyo: true,
-        repeat: 3,
+        targets: badge,
+        scale: 1,
+        duration: 180,
+        ease: 'Back.easeOut',
+        onComplete: () => this.tweens.add({ targets: badge, alpha: 0, y: badge.y - 18, duration: 520, delay: 1000, onComplete: () => badge.destroy() }),
       });
     });
-
-    // Show hint text
-    const hintText = this.add.text(width / 2, height / 2 - 60, '再试试~ 从小到大哦', {
-      fontSize: '28px',
-      color: '#FF7043',
-      fontFamily: 'sans-serif',
-      fontStyle: 'bold',
-    }).setOrigin(0.5);
-
-    this.tweens.add({
-      targets: hintText,
-      alpha: 0,
-      y: hintText.y - 40,
-      duration: 1200,
-      delay: 500,
-      onComplete: () => hintText.destroy(),
-    });
+    this.updateStatus();
   }
 
-  private showLevelComplete() {
+  private finishLevel() {
+    const level = LEVELS[this.levelIndex];
+    this.audio.playSuccess();
+    this.items.forEach(item => item.sprite.disableInteractive());
+    this.items.forEach((item, index) => {
+      this.time.delayedCall(index * 120, () => {
+        showStarBurst(this, item.sprite.x, item.sprite.y);
+        this.tweens.add({ targets: item.sprite, y: item.sprite.y - 16, duration: 180, yoyo: true, ease: 'Sine.easeOut' });
+      });
+    });
+
+    if (this.levelIndex < LEVELS.length - 1) {
+      showFloatingToast(this, '下一组大小挑战', level.accent);
+      this.time.delayedCall(900, () => {
+        this.scene.restart({
+          levelIndex: this.levelIndex + 1,
+          wrongOrders: this.wrongOrders,
+          hintsUsed: this.hintsUsed,
+        });
+      });
+      return;
+    }
+
+    this.time.delayedCall(900, () => this.showComplete());
+  }
+
+  private updateStatus() {
+    const level = LEVELS[this.levelIndex];
+    const placed = this.items.filter(item => item.currentSlot !== null).length;
+    this.statusText?.setText(`放好 ${placed}/${level.count}  错 ${this.wrongOrders}  提示 ${this.hintsUsed}`);
+  }
+
+  private showComplete() {
     const { width, height } = this.scale;
-    recordGameComplete(this, 'SizeSortGame', 3, '大小顺序排好了');
+    const stars = this.wrongOrders <= 1 && this.hintsUsed <= 1 ? 3 : this.wrongOrders <= 4 && this.hintsUsed <= 3 ? 2 : 1;
+    recordGameComplete(this, 'SizeSortGame', stars, '大小顺序排好了');
 
-    // Overlay
-    this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.4);
+    const overlay = this.add.rectangle(width / 2, height / 2, width, height, 0x263238, 0.42).setDepth(100);
+    const panel = this.add.container(width / 2, height / 2).setDepth(101);
+    const bg = this.add.graphics();
+    bg.fillStyle(0xffffff, 0.97);
+    bg.fillRoundedRect(-220, -145, 440, 290, 28);
+    bg.lineStyle(4, 0xE91E63, 0.66);
+    bg.strokeRoundedRect(-220, -145, 440, 290, 28);
 
-    // Panel
-    const panel = this.add.graphics();
-    panel.fillStyle(0xffffff, 0.95);
-    panel.fillRoundedRect(width / 2 - 200, height / 2 - 140, 400, 280, 24);
-
-    // Title
-    this.add.text(width / 2, height / 2 - 80, '🎉 排对了！', {
-      fontSize: '40px',
-      color: '#E91E63',
+    const title = this.add.text(0, -92, '大小排队完成', {
+      fontSize: '34px',
+      color: '#C2185B',
       fontFamily: 'sans-serif',
       fontStyle: 'bold',
     }).setOrigin(0.5);
-
-    // Level info
-    this.add.text(width / 2, height / 2 - 30, `第 ${this.level} 关完成`, {
-      fontSize: '22px',
-      color: '#666666',
+    const detail = this.add.text(0, -50, `顺序错误 ${this.wrongOrders} 次 · 提示 ${this.hintsUsed} 次`, {
+      fontSize: '20px',
+      color: '#607D8B',
       fontFamily: 'sans-serif',
     }).setOrigin(0.5);
+    panel.add([bg, title, detail]);
 
-    // Stars
-    const stars = 3;
     for (let i = 0; i < 3; i++) {
-      const star = this.add.image(
-        width / 2 - 50 + i * 50,
-        height / 2 + 20,
-        i < stars ? 'star_gold' : 'star_gray'
-      );
+      const star = this.add.image(-58 + i * 58, 10, i < stars ? 'star_gold' : 'star_gray');
       star.setScale(0);
-      this.tweens.add({
-        targets: star,
-        scale: 1,
-        duration: 300,
-        delay: i * 200,
-        ease: 'Back.easeOut',
-      });
+      panel.add(star);
+      this.tweens.add({ targets: star, scale: 1, duration: 300, delay: i * 170, ease: 'Back.easeOut' });
     }
 
-    // Next level button (if not at max)
-    if (this.itemCount < 5) {
-      const nextBtn = this.add.text(width / 2, height / 2 + 85, '下一关 ▶', {
-        fontSize: '26px',
-        color: '#ffffff',
-        fontFamily: 'sans-serif',
-        fontStyle: 'bold',
-        backgroundColor: '#E91E63',
-        padding: { x: 30, y: 12 },
-      }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-
-      nextBtn.on('pointerdown', () => {
-        this.level++;
-        this.scene.restart();
-      });
-    } else {
-      // Final level - show replay
-      const replayBtn = this.add.text(width / 2, height / 2 + 85, '再玩一次 🔄', {
-        fontSize: '26px',
-        color: '#ffffff',
-        fontFamily: 'sans-serif',
-        fontStyle: 'bold',
-        backgroundColor: '#E91E63',
-        padding: { x: 30, y: 12 },
-      }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-
-      replayBtn.on('pointerdown', () => {
-        this.level = 1;
-        this.scene.restart();
-      });
-    }
+    const againBtn = this.add.text(0, 92, '再排一次', {
+      fontSize: '24px',
+      color: '#ffffff',
+      fontFamily: 'sans-serif',
+      fontStyle: 'bold',
+      backgroundColor: '#C2185B',
+      padding: { x: 28, y: 12 },
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    againBtn.on('pointerdown', () => {
+      this.audio.playTap();
+      overlay.destroy();
+      this.scene.restart({ levelIndex: 0, wrongOrders: 0, hintsUsed: 0 });
+    });
+    panel.add(againBtn);
+    panel.setScale(0.86).setAlpha(0);
+    this.tweens.add({ targets: panel, scale: 1, alpha: 1, duration: 260, ease: 'Back.easeOut' });
   }
 }
