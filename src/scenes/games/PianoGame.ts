@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { AudioManager } from '../../components/AudioManager';
-import { enhanceGameScene } from '../../components/GameExperience';
+import { enhanceGameScene, recordGameComplete, showFloatingToast } from '../../components/GameExperience';
+import { showStarBurst } from '../../components/Particles';
 
 interface PianoKey {
   note: string;
@@ -36,10 +37,16 @@ export class PianoGame extends Phaser.Scene {
   private recording: { key: number; time: number }[] = [];
   private recordStartTime = 0;
   private isRecording = false;
+  private audio!: AudioManager;
   private modeText!: Phaser.GameObjects.Text;
   private feedbackText!: Phaser.GameObjects.Text;
+  private recitalGoalText!: Phaser.GameObjects.Text;
   private progressDots: Phaser.GameObjects.Graphics[] = [];
   private animalSprites: Phaser.GameObjects.Image[] = [];
+  private completedSongs = new Set<number>();
+  private followMistakes = 0;
+  private totalFollowMistakes = 0;
+  private finishedRecital = false;
   private waveType: OscillatorType = 'sine';
 
   private readonly noteData = [
@@ -107,6 +114,12 @@ export class PianoGame extends Phaser.Scene {
     this.isRecording = false;
     this.progressDots = [];
     this.animalSprites = [];
+    this.completedSongs = new Set<number>();
+    this.followMistakes = 0;
+    this.totalFollowMistakes = 0;
+    this.finishedRecital = false;
+    this.audio = AudioManager.getInstance();
+    this.audio.init(this);
     this.audioContext = (this.sound as Phaser.Sound.WebAudioSoundManager).context;
 
     // Background
@@ -143,6 +156,15 @@ export class PianoGame extends Phaser.Scene {
       color: '#4CAF50',
       fontFamily: 'sans-serif',
       fontStyle: 'bold',
+    }).setOrigin(0.5);
+
+    this.recitalGoalText = this.add.text(width / 2, height - 94, '小小演奏会 0/3', {
+      fontSize: '17px',
+      color: '#6A1B9A',
+      fontFamily: 'sans-serif',
+      fontStyle: 'bold',
+      backgroundColor: '#FFFFFF',
+      padding: { x: 16, y: 7 },
     }).setOrigin(0.5);
 
     // Dancing animals area
@@ -273,7 +295,11 @@ export class PianoGame extends Phaser.Scene {
         this.time.delayedCall(300, () => this.showFollowComplete());
       }
     } else {
+      this.followMistakes++;
+      this.totalFollowMistakes++;
+      this.audio.playWrong();
       this.showFeedback('再试试~', '#FF9800');
+      showFloatingToast(this, '看发光的琴键', 0xFFB300);
       this.highlightCorrectKey();
     }
   }
@@ -439,10 +465,12 @@ export class PianoGame extends Phaser.Scene {
     const song = this.songs[this.currentSongIndex];
     this.mode = 'follow';
     this.followIndex = 0;
+    this.followMistakes = 0;
     this.followSequence = song.sequence;
     this.modeText.setText(`🎯 跟弹: ${song.emoji} ${song.name}`);
     this.createProgressDots(song.sequence);
     this.showFeedback('听完后跟着弹!', '#7C4DFF');
+    showFloatingToast(this, `${song.name} 准备开始`, 0x7C4DFF);
 
     // Play the song first so kid can hear it
     this.playSong(this.currentSongIndex, () => {
@@ -451,6 +479,10 @@ export class PianoGame extends Phaser.Scene {
   }
 
   private showFollowComplete() {
+    const completedSongIndex = this.currentSongIndex;
+    const wasNewSong = !this.completedSongs.has(completedSongIndex);
+    this.completedSongs.add(completedSongIndex);
+    this.updateRecitalGoal();
     this.mode = 'free';
     this.modeText.setText('🎵 自由弹奏');
     this.progressDots.forEach(d => d.destroy());
@@ -472,6 +504,11 @@ export class PianoGame extends Phaser.Scene {
     }
 
     this.showFeedback('🎉 太棒了! 弹得真好!', '#4CAF50');
+    showFloatingToast(
+      this,
+      wasNewSong ? `收集 ${this.songs[completedSongIndex].name}` : '这首歌已经会弹了',
+      0x7C4DFF
+    );
 
     // Bounce all animals
     this.animalSprites.forEach((animal, i) => {
@@ -483,7 +520,96 @@ export class PianoGame extends Phaser.Scene {
         yoyo: true,
         repeat: 2,
       });
+      this.time.delayedCall(i * 110, () => showStarBurst(this, animal.x, animal.y));
     });
+
+    if (this.completedSongs.size >= 3 && !this.finishedRecital) {
+      this.finishedRecital = true;
+      this.time.delayedCall(1100, () => this.showRecitalComplete());
+    }
+  }
+
+  private updateRecitalGoal() {
+    const count = Math.min(this.completedSongs.size, 3);
+    this.recitalGoalText.setText(`小小演奏会 ${count}/3`);
+    this.tweens.add({
+      targets: this.recitalGoalText,
+      scale: 1.08,
+      duration: 150,
+      yoyo: true,
+      ease: 'Back.easeOut',
+    });
+  }
+
+  private showRecitalComplete() {
+    const { width, height } = this.scale;
+    const stars = Math.max(1, 3 - (this.totalFollowMistakes > 4 ? 1 : 0) - (this.totalFollowMistakes > 9 ? 1 : 0));
+    recordGameComplete(this, 'PianoGame', stars, '小小演奏会完成');
+
+    const overlay = this.add.rectangle(width / 2, height / 2, width, height, 0x4A148C, 0.32)
+      .setInteractive()
+      .setDepth(9000);
+    const panel = this.add.container(width / 2, height / 2).setDepth(9001);
+    const bg = this.add.graphics();
+    bg.fillStyle(0xffffff, 0.98);
+    bg.fillRoundedRect(-205, -144, 410, 288, 26);
+    bg.lineStyle(4, 0xEC407A, 0.75);
+    bg.strokeRoundedRect(-205, -144, 410, 288, 26);
+
+    const title = this.add.text(0, -96, '演奏会完成', {
+      fontSize: '34px',
+      color: '#4A148C',
+      fontFamily: 'sans-serif',
+      fontStyle: 'bold',
+    }).setOrigin(0.5);
+
+    const summary = this.add.text(0, -54, `完成 ${this.completedSongs.size} 首 · 提示 ${this.totalFollowMistakes} 次`, {
+      fontSize: '19px',
+      color: '#607D8B',
+      fontFamily: 'sans-serif',
+    }).setOrigin(0.5);
+
+    const starImages: Phaser.GameObjects.Image[] = [];
+    for (let i = 0; i < 3; i++) {
+      const star = this.add.image(-58 + i * 58, -4, i < stars ? 'star_gold' : 'star_empty').setScale(0);
+      starImages.push(star);
+      this.tweens.add({
+        targets: star,
+        scale: 0.9,
+        duration: 270,
+        delay: i * 150,
+        ease: 'Back.easeOut',
+      });
+    }
+
+    const replay = this.add.text(-86, 82, '再开一场', {
+      fontSize: '21px',
+      color: '#ffffff',
+      fontFamily: 'sans-serif',
+      fontStyle: 'bold',
+      backgroundColor: '#7C4DFF',
+      padding: { x: 20, y: 10 },
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+
+    const menu = this.add.text(92, 82, '回到首页', {
+      fontSize: '21px',
+      color: '#ffffff',
+      fontFamily: 'sans-serif',
+      fontStyle: 'bold',
+      backgroundColor: '#26A69A',
+      padding: { x: 20, y: 10 },
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+
+    replay.on('pointerdown', () => {
+      overlay.destroy();
+      panel.destroy();
+      this.scene.restart();
+    });
+    menu.on('pointerdown', () => this.scene.start('MenuScene'));
+
+    panel.add([bg, title, summary, ...starImages, replay, menu]);
+    panel.setScale(0.88).setAlpha(0);
+    this.tweens.add({ targets: panel, scale: 1, alpha: 1, duration: 260, ease: 'Back.easeOut' });
   }
 
   private toggleRecording() {
@@ -585,7 +711,7 @@ export class PianoGame extends Phaser.Scene {
 
   private playTone(frequency: number) {
     const ctx = this.audioContext;
-    if (!ctx) return;
+    if (!ctx || this.audio.muted) return;
 
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
