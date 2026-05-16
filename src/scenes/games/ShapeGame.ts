@@ -1,8 +1,7 @@
 import Phaser from 'phaser';
 import { AudioManager } from '../../components/AudioManager';
-import { enhanceGameScene } from '../../components/GameExperience';
-import { showConfetti, showStarBurst } from '../../components/Particles';
-import { saveStars } from '../../utils/storage';
+import { enhanceGameScene, recordGameComplete } from '../../components/GameExperience';
+import { showStarBurst } from '../../components/Particles';
 import { VoiceFeedback } from '../../components/VoiceFeedback';
 
 type ShapeType = 'circle' | 'square' | 'triangle' | 'star' | 'hexagon' | 'diamond' | 'oval' | 'heart';
@@ -374,10 +373,8 @@ export class ShapeGame extends Phaser.Scene {
   }
 
   private showComplete(): void {
-    this.audio.playComplete();
-    saveStars('ShapeGame', Math.min(this.level, 3));
+    recordGameComplete(this, 'ShapeGame', Math.min(this.level, 3), '形状全部放对了');
     const { width, height } = this.scale;
-    showConfetti(this);
 
     this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.4).setDepth(100);
 
