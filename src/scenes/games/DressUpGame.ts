@@ -1,9 +1,8 @@
 import Phaser from 'phaser';
-import { enhanceGameScene } from '../../components/GameExperience';
-import { showConfetti, showStarBurst } from '../../components/Particles';
+import { enhanceGameScene, recordGameComplete } from '../../components/GameExperience';
+import { showStarBurst } from '../../components/Particles';
 import { AudioManager } from '../../components/AudioManager';
 import { VoiceFeedback } from '../../components/VoiceFeedback';
-import { saveStars } from '../../utils/storage';
 
 type DressCategory = 'hair' | 'tops' | 'bottoms' | 'shoes' | 'accessories';
 
@@ -472,12 +471,9 @@ export class DressUpGame extends Phaser.Scene {
   }
 
   private showCelebration(): void {
-    this.audio.playComplete();
-    VoiceFeedback.speak('造型完成，真漂亮');
-    saveStars('DressUpGame', this.equippedIds.size >= 4 ? 3 : 2);
+    recordGameComplete(this, 'DressUpGame', this.equippedIds.size >= 4 ? 3 : 2, '造型完成，真漂亮');
     const { width, height } = this.scale;
 
-    showConfetti(this);
     this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.42).setDepth(100);
 
     const panel = this.add.container(width / 2, height / 2).setDepth(101);
