@@ -42,8 +42,13 @@ export class PianoGame extends Phaser.Scene {
   private feedbackText!: Phaser.GameObjects.Text;
   private recitalGoalText!: Phaser.GameObjects.Text;
   private progressDots: Phaser.GameObjects.Graphics[] = [];
+  private followHintHalo?: Phaser.GameObjects.Graphics;
+  private followHintArrow?: Phaser.GameObjects.Text;
+  private followHintBadge?: Phaser.GameObjects.Container;
+  private followHintTweens: Phaser.Tweens.Tween[] = [];
   private animalSprites: Phaser.GameObjects.Image[] = [];
   private completedSongs = new Set<number>();
+  private followInputReady = false;
   private followMistakes = 0;
   private totalFollowMistakes = 0;
   private finishedRecital = false;
@@ -113,8 +118,10 @@ export class PianoGame extends Phaser.Scene {
     this.recording = [];
     this.isRecording = false;
     this.progressDots = [];
+    this.followHintTweens = [];
     this.animalSprites = [];
     this.completedSongs = new Set<number>();
+    this.followInputReady = false;
     this.followMistakes = 0;
     this.totalFollowMistakes = 0;
     this.finishedRecital = false;
@@ -272,6 +279,7 @@ export class PianoGame extends Phaser.Scene {
 
   private onKeyPress(index: number) {
     if (this.isPlayingSong) return;
+    if (this.mode === 'follow' && !this.followInputReady) return;
 
     this.pressKey(index);
     this.bounceAnimal(index);
@@ -292,35 +300,114 @@ export class PianoGame extends Phaser.Scene {
       this.showFeedback('👍', '#4CAF50');
 
       if (this.followIndex >= this.followSequence.length) {
+        this.clearFollowHint();
+        this.followInputReady = false;
         this.time.delayedCall(300, () => this.showFollowComplete());
+      } else {
+        this.renderFollowHint();
       }
     } else {
       this.followMistakes++;
       this.totalFollowMistakes++;
       this.audio.playWrong();
       this.showFeedback('再试试~', '#FF9800');
-      showFloatingToast(this, '看发光的琴键', 0xFFB300);
+      showFloatingToast(this, '黄色箭头指着下一键', 0xFFB300);
       this.highlightCorrectKey();
     }
   }
 
   private highlightCorrectKey() {
+    this.renderFollowHint(true);
+  }
+
+  private renderFollowHint(strong = false) {
+    if (this.mode !== 'follow' || this.followIndex >= this.followSequence.length) return;
+
+    this.clearFollowHint();
     const correctIndex = this.followSequence[this.followIndex];
     const key = this.keys[correctIndex];
+    const note = this.noteData[correctIndex];
+    const centerX = key.x + key.width / 2;
+    const badgeX = Phaser.Math.Clamp(centerX, 112, this.scale.width - 112);
+    const badgeY = Math.max(118, key.y - 58);
 
-    const highlight = this.add.graphics();
-    highlight.lineStyle(4, 0xFFD700, 1);
-    highlight.strokeRoundedRect(key.x - 2, key.y - 2, key.width + 4, key.height + 4, 14);
+    const halo = this.add.graphics().setDepth(80);
+    halo.fillStyle(0xFFF59D, strong ? 0.38 : 0.28);
+    halo.fillRoundedRect(key.x - 10, key.y - 10, key.width + 20, key.height + 20, 18);
+    halo.lineStyle(strong ? 8 : 6, 0xFFD54F, 1);
+    halo.strokeRoundedRect(key.x - 10, key.y - 10, key.width + 20, key.height + 20, 18);
+    halo.lineStyle(3, 0xffffff, 0.95);
+    halo.strokeRoundedRect(key.x - 3, key.y - 3, key.width + 6, key.height + 6, 14);
 
-    this.tweens.add({
-      targets: highlight,
-      alpha: 0,
-      duration: 1000,
-      repeat: 2,
+    const arrow = this.add.text(centerX, key.y - 25, '⬇', {
+      fontSize: strong ? '54px' : '46px',
+      color: '#FFB300',
+      fontFamily: 'sans-serif',
+      fontStyle: 'bold',
+      stroke: '#ffffff',
+      strokeThickness: 7,
+    }).setOrigin(0.5).setDepth(82);
+
+    const badge = this.add.container(badgeX, badgeY).setDepth(83);
+    const badgeBg = this.add.graphics();
+    badgeBg.fillStyle(0xffffff, 0.98);
+    badgeBg.fillRoundedRect(-100, -29, 200, 58, 20);
+    badgeBg.lineStyle(4, note.color, 0.86);
+    badgeBg.strokeRoundedRect(-100, -29, 200, 58, 20);
+    const badgeText = this.add.text(0, -5, `下一键 ${note.solfege}`, {
+      fontSize: '22px',
+      color: '#4A148C',
+      fontFamily: 'sans-serif',
+      fontStyle: 'bold',
+    }).setOrigin(0.5);
+    const subText = this.add.text(0, 17, '按黄色箭头下面的琴键', {
+      fontSize: '13px',
+      color: '#7B1FA2',
+      fontFamily: 'sans-serif',
+    }).setOrigin(0.5);
+    badge.add([badgeBg, badgeText, subText]);
+
+    this.followHintHalo = halo;
+    this.followHintArrow = arrow;
+    this.followHintBadge = badge;
+
+    this.followHintTweens.push(this.tweens.add({
+      targets: halo,
+      alpha: { from: 0.72, to: 1 },
+      duration: 420,
       yoyo: true,
-      onComplete: () => highlight.destroy(),
-    });
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    }));
+    this.followHintTweens.push(this.tweens.add({
+      targets: arrow,
+      y: arrow.y - 12,
+      duration: 430,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    }));
+    this.followHintTweens.push(this.tweens.add({
+      targets: badge,
+      scale: strong ? 1.1 : 1.05,
+      duration: 260,
+      yoyo: true,
+      repeat: strong ? 3 : -1,
+      ease: 'Back.easeOut',
+    }));
   }
+
+  private clearFollowHint() {
+    this.followHintTweens.forEach(tween => tween.stop());
+    this.followHintTweens = [];
+    this.followHintHalo?.destroy();
+    this.followHintArrow?.destroy();
+    this.followHintBadge?.destroy();
+    this.followHintHalo = undefined;
+    this.followHintArrow = undefined;
+    this.followHintBadge = undefined;
+  }
+
 
   private showFeedback(text: string, color: string) {
     this.feedbackText.setText(text);
@@ -336,15 +423,13 @@ export class PianoGame extends Phaser.Scene {
 
   private updateProgressDots() {
     this.progressDots.forEach((dot, i) => {
-      dot.clear();
       if (i < this.followIndex) {
-        dot.fillStyle(0x4CAF50);
+        this.drawProgressDot(dot, i, 'done');
       } else if (i === this.followIndex) {
-        dot.fillStyle(0xFFD700);
+        this.drawProgressDot(dot, i, 'current');
       } else {
-        dot.fillStyle(0xCCCCCC);
+        this.drawProgressDot(dot, i, 'pending');
       }
-      dot.fillCircle(0, 0, 6);
     });
   }
 
@@ -353,16 +438,39 @@ export class PianoGame extends Phaser.Scene {
     this.progressDots.forEach(d => d.destroy());
     this.progressDots = [];
 
-    const dotGap = Math.min(20, (width - 200) / sequence.length);
+    const dotGap = Math.min(28, (width - 180) / sequence.length);
     const startX = width / 2 - (sequence.length - 1) * dotGap / 2;
 
     sequence.forEach((_, i) => {
       const dot = this.add.graphics();
-      dot.fillStyle(i === 0 ? 0xFFD700 : 0xCCCCCC);
-      dot.fillCircle(0, 0, 6);
-      dot.setPosition(startX + i * dotGap, 100);
+      dot.setPosition(startX + i * dotGap, 104);
+      this.drawProgressDot(dot, i, i === 0 ? 'current' : 'pending');
       this.progressDots.push(dot);
     });
+  }
+
+  private drawProgressDot(dot: Phaser.GameObjects.Graphics, index: number, state: 'done' | 'current' | 'pending') {
+    const noteIndex = this.followSequence[index] ?? 0;
+    const color = this.noteData[noteIndex].color;
+    dot.clear();
+    if (state === 'done') {
+      dot.fillStyle(color, 1);
+      dot.fillCircle(0, 0, 9);
+      dot.lineStyle(2, 0xffffff, 0.95);
+      dot.strokeCircle(0, 0, 9);
+      return;
+    }
+    if (state === 'current') {
+      dot.fillStyle(0xFFF59D, 1);
+      dot.fillCircle(0, 0, 12);
+      dot.lineStyle(4, color, 0.95);
+      dot.strokeCircle(0, 0, 12);
+      return;
+    }
+    dot.fillStyle(0xffffff, 0.86);
+    dot.fillCircle(0, 0, 7);
+    dot.lineStyle(2, color, 0.42);
+    dot.strokeCircle(0, 0, 7);
   }
 
   private createControlButtons() {
@@ -436,6 +544,9 @@ export class PianoGame extends Phaser.Scene {
 
       item.on('pointerdown', () => {
         this.currentSongIndex = i;
+        this.mode = 'listen';
+        this.followInputReady = false;
+        this.clearFollowHint();
         destroyMenu();
         this.playSong(i);
       });
@@ -465,8 +576,10 @@ export class PianoGame extends Phaser.Scene {
     const song = this.songs[this.currentSongIndex];
     this.mode = 'follow';
     this.followIndex = 0;
+    this.followInputReady = false;
     this.followMistakes = 0;
     this.followSequence = song.sequence;
+    this.clearFollowHint();
     this.modeText.setText(`🎯 跟弹: ${song.emoji} ${song.name}`);
     this.createProgressDots(song.sequence);
     this.showFeedback('听完后跟着弹!', '#7C4DFF');
@@ -474,7 +587,10 @@ export class PianoGame extends Phaser.Scene {
 
     // Play the song first so kid can hear it
     this.playSong(this.currentSongIndex, () => {
+      this.followInputReady = true;
       this.showFeedback('轮到你了!', '#FF6B35');
+      this.renderFollowHint();
+      showFloatingToast(this, '看黄色箭头，弹下一键', 0xFFD54F);
     });
   }
 
@@ -484,6 +600,8 @@ export class PianoGame extends Phaser.Scene {
     this.completedSongs.add(completedSongIndex);
     this.updateRecitalGoal();
     this.mode = 'free';
+    this.followInputReady = false;
+    this.clearFollowHint();
     this.modeText.setText('🎵 自由弹奏');
     this.progressDots.forEach(d => d.destroy());
     this.progressDots = [];
@@ -622,6 +740,8 @@ export class PianoGame extends Phaser.Scene {
       this.recordStartTime = Date.now();
       this.isRecording = true;
       this.mode = 'record';
+      this.followInputReady = false;
+      this.clearFollowHint();
       this.modeText.setText('⏺️ 录音中...');
       this.showFeedback('开始弹奏吧!', '#FF4444');
     }
